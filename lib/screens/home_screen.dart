@@ -17,7 +17,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _miGrupo;
-  bool _cargandoGrupo = false;
 
   @override
   void initState() {
@@ -28,13 +27,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _cargarDatosUsuario() async {
     if (!SupabaseService.isAuthenticated) return;
 
-    setState(() => _cargandoGrupo = true);
     await SupabaseService.loadProfile();
     final grupo = await SupabaseService.getMiGrupo();
     if (mounted) {
       setState(() {
         _miGrupo = grupo;
-        _cargandoGrupo = false;
       });
     }
   }

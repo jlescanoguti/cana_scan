@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/supabase_service.dart';
 
 class MapScreen extends StatefulWidget {
   final List<Map<String, dynamic>> escaneos;
@@ -92,7 +91,8 @@ class _MapScreenState extends State<MapScreen> {
                   style: TextStyle(fontSize: 12, color: Color(0xFF4A5D4A))),
               Switch(
                 value: _soloPendientes,
-                activeColor: const Color(0xFF2D7A2D),
+                activeThumbColor: const Color(0xFF2D7A2D),
+                activeTrackColor: const Color(0xFFE8F5E9),
                 onChanged: (val) {
                   setState(() {
                     _soloPendientes = val;
@@ -112,7 +112,7 @@ class _MapScreenState extends State<MapScreen> {
             options: MapOptions(
               initialCenter: centro,
               initialZoom: 15.0,
-              onTap: (_, __) {
+              onTap: (tapPosition, point) {
                 if (_focoSeleccionado != null) {
                   setState(() => _focoSeleccionado = null);
                 }
@@ -261,7 +261,7 @@ class _MapScreenState extends State<MapScreen> {
                     width: 52,
                     height: 52,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
+                    errorBuilder: (context, error, stackTrace) => Container(
                       width: 52,
                       height: 52,
                       color: const Color(0xFFF1F8F1),

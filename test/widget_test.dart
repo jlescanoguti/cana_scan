@@ -11,8 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cana_scan/main.dart';
 import 'package:cana_scan/screens/home_screen.dart';
 
-import 'package:cana_scan/screens/login_screen.dart';
-
 void main() {
   testWidgets('renders SplashScreen and navigates to HomeScreen when unauthenticated (Guest mode)', (WidgetTester tester) async {
     await tester.pumpWidget(const CanaScanApp());
@@ -33,7 +31,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
 
     expect(find.byType(HomeScreen), findsOneWidget);
-    final infoButton = find.byIcon(Icons.info_outline_rounded);
+    final infoButton = find.byType(FloatingActionButton);
     expect(infoButton, findsOneWidget);
 
     // Tocar el botón de información y verificar que se abre el modal

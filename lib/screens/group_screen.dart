@@ -13,7 +13,6 @@ class _GroupScreenState extends State<GroupScreen> {
   bool _cargando = true;
   Map<String, dynamic>? _miGrupo;
   List<Map<String, dynamic>> _miembros = [];
-  String? _error;
 
   final _codigoController = TextEditingController();
   final _nombreGrupoController = TextEditingController();
@@ -35,7 +34,6 @@ class _GroupScreenState extends State<GroupScreen> {
   Future<void> _cargarDatosGrupo() async {
     setState(() {
       _cargando = true;
-      _error = null;
     });
 
     try {
@@ -52,10 +50,9 @@ class _GroupScreenState extends State<GroupScreen> {
           _cargando = false;
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
           _cargando = false;
         });
       }
@@ -502,7 +499,7 @@ class _GroupScreenState extends State<GroupScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: _miembros.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          separatorBuilder: (context, index) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
             final m = _miembros[index];
             final esMiembroLider = m['rol'] == 'lider';

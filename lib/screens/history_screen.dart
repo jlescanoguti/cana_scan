@@ -300,7 +300,7 @@ class _HistoryScreenState extends State<HistoryScreen>
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
         itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (context, index) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final item = items[index];
           final diag = item['diagnostico_principal'] ?? 'No reconocido';
@@ -350,7 +350,8 @@ class _HistoryScreenState extends State<HistoryScreen>
                                   width: 60,
                                   height: 60,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
+                                  errorBuilder:
+                                      (context, error, stackTrace) => Container(
                                     width: 60,
                                     height: 60,
                                     color: const Color(0xFFF1F8F1),
