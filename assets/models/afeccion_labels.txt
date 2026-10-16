@@ -1,0 +1,9 @@
+AmarillamientoAvanzado
+AmarillamientoInicial
+CogolleroAvanzado
+CogolleroInicial
+PodredumbreRojaAvanzado
+PodredumbreRojaInicial
+RoyaAvanzado
+RoyaInicial
+Saludable
