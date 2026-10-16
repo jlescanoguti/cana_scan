@@ -297,7 +297,7 @@ class SupabaseService {
     return grupo;
   }
 
-  /// Salir del grupo actual
+  /// Salir del grupo actual (como empleado)
   static Future<void> salirDeGrupo() async {
     final user = currentUser;
     if (user == null) return;
@@ -306,6 +306,81 @@ class SupabaseService {
       'grupo_id': null,
       'rol': 'empleado',
     }).eq('id', user.id);
+
+    await loadProfile();
+  }
+
+  /// Transfiere el liderazgo de una cuadrilla a otro integrante y retira al líder actual de dicha cuadrilla
+  static Future<void> transferirLiderazgoYSalir(
+      String grupoId, String nuevoLiderId) async {
+    final user = currentUser;
+    if (user == null) return;
+
+    // 1. Asignar nuevo líder en la tabla grupos
+    await client.from('grupos').update({
+      'lider_id': nuevoLiderId,
+    }).eq('id', grupoId);
+
+    // 2. Ascender al nuevo líder en perfiles
+    await client.from('perfiles').update({
+      'rol': 'lider',
+    }).eq('id', nuevoLiderId);
+
+    // 3. Revisar si el usuario actual aún lidera otras cuadrillas
+    final otrosGrupos = await client
+        .from('grupos')
+        .select('id')
+        .eq('lider_id', user.id)
+        .neq('id', grupoId);
+
+    if (otrosGrupos.isNotEmpty) {
+      await client.from('perfiles').update({
+        'grupo_id': otrosGrupos.first['id'],
+        'rol': 'lider',
+      }).eq('id', user.id);
+    } else {
+      await client.from('perfiles').update({
+        'grupo_id': null,
+        'rol': 'empleado',
+      }).eq('id', user.id);
+    }
+
+    await loadProfile();
+  }
+
+  /// Disuelve una cuadrilla por completo: desvincula miembros y elimina el grupo
+  static Future<void> disolverCuadrilla(String grupoId) async {
+    final user = currentUser;
+    if (user == null) return;
+
+    // 1. Desvincular miembros
+    try {
+      await client.from('perfiles').update({
+        'grupo_id': null,
+        'rol': 'empleado',
+      }).eq('grupo_id', grupoId);
+    } catch (_) {}
+
+    // 2. Eliminar el grupo
+    await client.from('grupos').delete().eq('id', grupoId);
+
+    // 3. Revisar si el usuario lidera otras cuadrillas
+    final otrosGrupos = await client
+        .from('grupos')
+        .select('id')
+        .eq('lider_id', user.id);
+
+    if (otrosGrupos.isNotEmpty) {
+      await client.from('perfiles').update({
+        'grupo_id': otrosGrupos.first['id'],
+        'rol': 'lider',
+      }).eq('id', user.id);
+    } else {
+      await client.from('perfiles').update({
+        'grupo_id': null,
+        'rol': 'empleado',
+      }).eq('id', user.id);
+    }
 
     await loadProfile();
   }
@@ -363,6 +438,41 @@ class SupabaseService {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Obtiene la lista de todos los grupos creados por el líder actual
+  static Future<List<Map<String, dynamic>>> getMisGruposComoLider() async {
+    final user = currentUser;
+    if (user == null) return [];
+
+    try {
+      final res = await client
+          .from('grupos')
+          .select()
+          .eq('lider_id', user.id)
+          .order('creado_en', ascending: false);
+
+      final grupos = List<Map<String, dynamic>>.from(res);
+      for (final g in grupos) {
+        g['lider_nombre'] = currentNombre;
+      }
+      return grupos;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Cambia el grupo activo del líder
+  static Future<void> seleccionarGrupoActivo(String grupoId) async {
+    final user = currentUser;
+    if (user == null) return;
+
+    await client.from('perfiles').update({
+      'grupo_id': grupoId,
+      'rol': 'lider',
+    }).eq('id', user.id);
+
+    await loadProfile();
   }
 
   // ========================================================================

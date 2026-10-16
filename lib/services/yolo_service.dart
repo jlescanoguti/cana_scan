@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -35,9 +35,22 @@ class YoloService {
   static bool _inicializado = false;
 
   static const int inputSize = 640;
-  static const double confThresholdHoja = 0.20;
-  static const double confThresholdAfeccion = 0.20;
-  static const double iouThreshold = 0.45;
+  static const double confThresholdHoja = 0.15;
+  static const double confThresholdAfeccion = 0.15;
+  static const double iouThreshold = 0.25;
+
+  /// Diccionario oficial de traducción al español idéntico al API original
+  static const Map<String, String> clasesEs = {
+    'AmarillamientoAvanzado': 'Amarillamiento Avanzado',
+    'AmarillamientoInicial': 'Amarillamiento Inicial',
+    'CogolleroAvanzado': 'Gusano Cogollero Avanzado',
+    'CogolleroInicial': 'Gusano Cogollero Inicial',
+    'PodredumbreRojaAvanzado': 'Podredumbre Roja Avanzada',
+    'PodredumbreRojaInicial': 'Podredumbre Roja Inicial',
+    'RoyaAvanzado': 'Roya Avanzada',
+    'RoyaInicial': 'Roya Inicial',
+    'Saludable': 'Saludable',
+  };
 
   /// Inicializa los dos intérpretes de TFLite y carga las etiquetas
   static Future<bool> initialize() async {
@@ -99,23 +112,14 @@ class YoloService {
     }
 
     final bytes = await imageFile.readAsBytes();
-    final originalImage = img.decodeImage(bytes);
-    if (originalImage == null) {
-      throw Exception('No se pudo decodificar la imagen seleccionada.');
-    }
-
-    final origW = originalImage.width.toDouble();
-    final origH = originalImage.height.toDouble();
-
-    // Preprocesamiento a 640x640 normalizado [0.0, 1.0]
-    final resized = img.copyResize(
-      originalImage,
-      width: inputSize,
-      height: inputSize,
-      interpolation: img.Interpolation.linear,
+    final prep = await compute(
+      _preprocessImageInBackground,
+      _PreprocessParams(bytes, inputSize),
     );
 
-    final inputBuffer = _imageToByteBuffer(resized);
+    final origW = prep.origW;
+    final origH = prep.origH;
+    final inputBuffer = prep.tensorBuffer.reshape([1, 3, inputSize, inputSize]);
 
     // ========================================================================
     // ETAPA 1: Comprobar si es hoja de caña de azúcar
@@ -140,6 +144,8 @@ class YoloService {
         'imagen_ancho': origW,
         'imagen_alto': origH,
         'detecciones': [],
+        'total': 0,
+        'mensaje': 'No se detectó cultivo de caña en la imagen',
       };
     }
 
@@ -164,24 +170,9 @@ class YoloService {
       'imagen_ancho': origW,
       'imagen_alto': origH,
       'detecciones': deteccionesAfeccion.map((d) => d.toMap()).toList(),
+      'total': deteccionesAfeccion.length,
+      'mensaje': 'Hoja de caña detectada',
     };
-  }
-
-  /// Convierte la imagen RGB en un buffer float32 normalizado de [1, 640, 640, 3]
-  static Float32List _imageToByteBuffer(img.Image image) {
-    final buffer = Float32List(1 * inputSize * inputSize * 3);
-    int pixelIndex = 0;
-
-    for (int y = 0; y < inputSize; y++) {
-      for (int x = 0; x < inputSize; x++) {
-        final pixel = image.getPixel(x, y);
-        buffer[pixelIndex++] = pixel.r / 255.0;
-        buffer[pixelIndex++] = pixel.g / 255.0;
-        buffer[pixelIndex++] = pixel.b / 255.0;
-      }
-    }
-
-    return buffer.reshape([1, inputSize, inputSize, 3]) as Float32List;
   }
 
   /// Crea la estructura de matriz de salida según el shape del tensor de salida
@@ -258,9 +249,12 @@ class YoloService {
         final double x2 = min(origW, (cx + w / 2) * scaleX);
         final double y2 = min(origH, (cy + h / 2) * scaleY);
 
+        final rawLabel = labels[bestClassIdx];
+        final nombreClase = clasesEs[rawLabel] ?? rawLabel;
+
         candidates.add(
           YoloDetection(
-            clase: labels[bestClassIdx],
+            clase: nombreClase,
             confianza: maxScore,
             bbox: [x1, y1, x2, y2],
           ),
@@ -312,3 +306,49 @@ class YoloService {
     return intersectionArea / unionArea;
   }
 }
+
+class _PreprocessParams {
+  final Uint8List bytes;
+  final int inputSize;
+  const _PreprocessParams(this.bytes, this.inputSize);
+}
+
+class _PreprocessResult {
+  final double origW;
+  final double origH;
+  final Float32List tensorBuffer;
+  const _PreprocessResult(this.origW, this.origH, this.tensorBuffer);
+}
+
+_PreprocessResult _preprocessImageInBackground(_PreprocessParams params) {
+  final originalImage = img.decodeImage(params.bytes);
+  if (originalImage == null) {
+    throw Exception('No se pudo decodificar la imagen seleccionada.');
+  }
+
+  final origW = originalImage.width.toDouble();
+  final origH = originalImage.height.toDouble();
+
+  final resized = img.copyResize(
+    originalImage,
+    width: params.inputSize,
+    height: params.inputSize,
+    interpolation: img.Interpolation.linear,
+  );
+
+  final buffer = Float32List(1 * 3 * params.inputSize * params.inputSize);
+  final int planeSize = params.inputSize * params.inputSize;
+
+  for (int y = 0; y < params.inputSize; y++) {
+    for (int x = 0; x < params.inputSize; x++) {
+      final pixel = resized.getPixel(x, y);
+      final int index = y * params.inputSize + x;
+      buffer[index] = pixel.r / 255.0;
+      buffer[planeSize + index] = pixel.g / 255.0;
+      buffer[2 * planeSize + index] = pixel.b / 255.0;
+    }
+  }
+
+  return _PreprocessResult(origW, origH, buffer);
+}
+

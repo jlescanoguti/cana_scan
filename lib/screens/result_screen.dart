@@ -41,33 +41,31 @@ class _ResultScreenState extends State<ResultScreen> {
   bool _yaGuardado = false;
   String? _mensajeGuardado;
 
-  static const double _umbralConfiable = 0.15;
+  static const double _umbralConfiable = 0.40;
 
   final Map<String, Color> _coloresClase = {
-    'Amarillamiento': const Color(0xFFFFD600),
-    'Amarillamiento Inicial': const Color(0xFFFFD600),
-    'Amarillamiento Avanzado': const Color(0xFFFFD600),
-    'AmarillamientoInicial': const Color(0xFFFFD600),
-    'AmarillamientoAvanzado': const Color(0xFFFFD600),
-    'Podredumbre Roja': Colors.red,
-    'Podredumbre Roja Inicial': Colors.red,
-    'Podredumbre Roja Avanzado': Colors.red,
-    'Podredumbre Roja Avanzada': Colors.red,
-    'PodredumbreRojaInicial': Colors.red,
-    'PodredumbreRojaAvanzado': Colors.red,
-    'Roya': Colors.blue,
-    'Roya Inicial': Colors.blue,
-    'Roya Avanzado': Colors.blue,
-    'Roya Avanzada': Colors.blue,
-    'RoyaInicial': Colors.blue,
-    'RoyaAvanzado': Colors.blue,
-    'Saludable': Colors.green,
-    'Cogollo Inicial': Colors.black,
-    'Cogollo Avanzado': Colors.black,
-    'Gusano Cogollero Inicial': Colors.black,
-    'Gusano Cogollero Avanzado': Colors.black,
-    'CogolleroInicial': Colors.black,
-    'CogolleroAvanzado': Colors.black,
+    'Amarillamiento Inicial': const Color(0xFFFFD54F),
+    'Amarillamiento Avanzado': const Color(0xFFFFA000),
+    'Podredumbre Roja Inicial': const Color(0xFFE57373),
+    'Podredumbre Roja Avanzada': const Color(0xFFC62828),
+    'Roya Inicial': const Color(0xFF64B5F6),
+    'Roya Avanzada': const Color(0xFF1565C0),
+    'Gusano Cogollero Inicial': const Color(0xFF8D6E63),
+    'Gusano Cogollero Avanzado': const Color(0xFF3E2723),
+    'Saludable': const Color(0xFF2E7D32),
+    // Variantes por compatibilidad
+    'Amarillamiento': const Color(0xFFFFD54F),
+    'Podredumbre Roja': const Color(0xFFC62828),
+    'Roya': const Color(0xFF1565C0),
+    'Cogollo': const Color(0xFF3E2723),
+    'AmarillamientoInicial': const Color(0xFFFFD54F),
+    'AmarillamientoAvanzado': const Color(0xFFFFA000),
+    'PodredumbreRojaInicial': const Color(0xFFE57373),
+    'PodredumbreRojaAvanzado': const Color(0xFFC62828),
+    'RoyaInicial': const Color(0xFF64B5F6),
+    'RoyaAvanzado': const Color(0xFF1565C0),
+    'CogolleroInicial': const Color(0xFF8D6E63),
+    'CogolleroAvanzado': const Color(0xFF3E2723),
   };
 
   Color _colorPorClase(String clase) {
@@ -121,17 +119,21 @@ class _ResultScreenState extends State<ResultScreen> {
           _cargando = false;
         });
 
-        // Evaluar si es afección para intentar obtener GPS de inmediato
+        // Evaluar condiciones de usuario para solicitud de GPS
+        final esInvitado = !SupabaseService.isAuthenticated;
+        final tieneGrupo = SupabaseService.currentGrupoId != null;
         final confiables = _deteccionesConfiables();
         final hayAfeccion = confiables.any((d) => d['clase'] != 'Saludable');
 
-        if (hayAfeccion) {
-          _obtenerUbicacionGps();
-        } else if (confiables.isNotEmpty &&
-            confiables.first['clase'] == 'Saludable' &&
-            SupabaseService.isAuthenticated) {
-          // Si está saludable y autenticado, se guarda en su historial personal sin alarmar al grupo
-          _guardarEnHistorial(esGrupal: false);
+        if (!esInvitado) {
+          if (tieneGrupo && hayAfeccion) {
+            // Usuario en grupo de trabajo: solicitud automática para el mapa colaborativo
+            _obtenerUbicacionGps();
+          } else if (confiables.isNotEmpty &&
+              confiables.first['clase'] == 'Saludable') {
+            // Si está saludable y autenticado, se guarda en su historial personal sin alarmar al grupo
+            _guardarEnHistorial(esGrupal: false);
+          }
         }
       }
     } catch (e) {
@@ -533,32 +535,6 @@ class _ResultScreenState extends State<ResultScreen> {
             ],
           ],
 
-          // Aviso si es foto de galería
-          if (widget.isFromGallery && widget.imageFile != null) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F4F1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.photo_library_outlined,
-                      size: 18, color: Color(0xFF6B806B)),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Foto de galería: la ubicación registrada corresponde a la posición actual del teléfono.',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF4A5D4A)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-
           // Banner si es invitado
           if (esInvitado && widget.imageFile != null) ...[
             Container(
@@ -751,6 +727,98 @@ class _ResultScreenState extends State<ResultScreen> {
       );
     }
 
+    final tieneGrupo = SupabaseService.currentGrupoId != null;
+
+    if (!tieneGrupo) {
+      if (_latitud != null && _longitud != null) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFC8E6C9)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.location_on_rounded,
+                  color: Color(0xFF2D7A2D), size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Ubicación de parcela adjuntada',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1B3A1B)),
+                    ),
+                    Text(
+                      'Lat: ${_latitud!.toStringAsFixed(5)}, Lon: ${_longitud!.toStringAsFixed(5)}'
+                      '${_precisionGps != null ? ' (±${_precisionGps!.toStringAsFixed(0)}m)' : ''}',
+                      style: const TextStyle(
+                          fontSize: 11.5, color: Color(0xFF2D7A2D)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      // Tarjeta opcional para agricultor independiente
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFD7E5D7)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.add_location_alt_outlined,
+                color: Color(0xFF2D7A2D), size: 24),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Ubicación opcional',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1B3A1B)),
+                  ),
+                  Text(
+                    'Adjunta el GPS para georreferenciar este foco en tu mapa personal.',
+                    style: TextStyle(fontSize: 11.5, color: Color(0xFF4A5D4A)),
+                  ),
+                ],
+              ),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2D7A2D),
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => _obtenerUbicacionGps(),
+              icon: const Icon(Icons.gps_fixed_rounded, size: 14),
+              label: const Text('Adjuntar', style: TextStyle(fontSize: 11.5)),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (_latitud != null && _longitud != null) {
       return Container(
         width: double.infinity,
@@ -854,9 +922,10 @@ class _ResultScreenState extends State<ResultScreen> {
     if (noEsCana) {
       bg = const Color(0xFFF1EFE8);
       fg = const Color(0xFF5F5E5A);
-      icono = Icons.help_outline_rounded;
-      titulo = 'No se detectó caña de azúcar';
-      subtitulo = 'Intenta acercar más la cámara a la hoja';
+      icono = Icons.search_off_rounded;
+      titulo = 'No se identificó cultivo de caña';
+      subtitulo =
+          'Asegúrate de enfocar con buena iluminación una hoja de caña de azúcar visible.';
     } else if (hayAfeccion) {
       bg = const Color(0xFFFFF3E0);
       fg = const Color(0xFFBA7517);
@@ -956,17 +1025,30 @@ class BoundingBoxPainter extends CustomPainter {
       final textPainter = TextPainter(
         text: TextSpan(
           text: label,
-          style: TextStyle(
+          style: const TextStyle(
             color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            backgroundColor: color,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
           ),
         ),
         textDirection: ui.TextDirection.ltr,
       );
       textPainter.layout();
-      textPainter.paint(canvas, Offset(x1, y1 - 16));
+
+      final textWidth = textPainter.width + 8;
+      final textHeight = textPainter.height + 4;
+      final badgeY = y1 >= textHeight ? y1 - textHeight : y1 + 2;
+
+      final bgPaint = Paint()..color = color;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x1, badgeY, textWidth, textHeight),
+          const Radius.circular(4),
+        ),
+        bgPaint,
+      );
+
+      textPainter.paint(canvas, Offset(x1 + 4, badgeY + 2));
     }
   }
 

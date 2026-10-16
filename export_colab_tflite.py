@@ -10,12 +10,12 @@ from ultralytics import YOLO
 
 print("--> Exportando MODELO_HOJA...")
 m_hoja = YOLO("MODELO_HOJA.pt")
-m_hoja.export(format="tflite", imgsz=640, half=True)
+m_hoja.export(format="litert", imgsz=640)
 
 print("--> Exportando MODELO_AFECCION...")
 m_afec = YOLO("MODELO_AFECCION.pt")
-m_afec.export(format="tflite", imgsz=640, half=True)
+m_afec.export(format="litert", imgsz=640)
 
-print("\nLISTO. En el panel de archivos verás dos carpetas creadas:")
-print("1) 'MODELO_HOJA_saved_model/MODELO_HOJA_float16.tflite' -> Descárgalo y guárdalo en tu app como: assets/models/MODELO_HOJA.tflite")
-print("2) 'MODELO_AFECCION_saved_model/MODELO_AFECCION_float16.tflite' -> Descárgalo y guárdalo en tu app como: assets/models/MODELO_AFECCION.tflite")
+print("\nLISTO. En el panel de archivos de Colab verás los archivos .tflite generados:")
+print("1) Descarga el modelo de la hoja y guárdalo como: assets/models/MODELO_HOJA.tflite")
+print("2) Descarga el modelo de afecciones y guárdalo como: assets/models/MODELO_AFECCION.tflite")

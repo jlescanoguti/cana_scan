@@ -5,7 +5,8 @@ import 'map_screen.dart';
 import 'result_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  final bool embedded;
+  const HistoryScreen({super.key, this.embedded = false});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -196,10 +197,14 @@ class _HistoryScreenState extends State<HistoryScreen>
       appBar: AppBar(
         backgroundColor: const Color(0xFFF3F8F1),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF1B3A1B)),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: !widget.embedded,
+        leading: widget.embedded
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new,
+                    color: Color(0xFF1B3A1B)),
+                onPressed: () => Navigator.pop(context),
+              ),
         title: const Text(
           'Historial de Diagnósticos',
           style: TextStyle(
@@ -466,16 +471,37 @@ class _HistoryScreenState extends State<HistoryScreen>
                         ],
 
                         if (lat != null && lng != null)
-                          ActionChip(
-                            avatar: const Icon(Icons.near_me_rounded,
-                                size: 14, color: Color(0xFF2D7A2D)),
-                            label: const Text('Ver en Maps',
-                                style: TextStyle(
-                                    fontSize: 11, fontWeight: FontWeight.w600)),
-                            backgroundColor: const Color(0xFFF1F8F1),
-                            padding: EdgeInsets.zero,
-                            onPressed: () => _abrirEnGoogleMaps(
+                          InkWell(
+                            onTap: () => _abrirEnGoogleMaps(
                                 lat.toDouble(), lng.toDouble()),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 9, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F8F1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                    color: const Color(0xFFC8E6C9), width: 1),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.near_me_rounded,
+                                      size: 13, color: Color(0xFF2D7A2D)),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'Ver en Maps',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF2D7A2D),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                       ],
                     ),

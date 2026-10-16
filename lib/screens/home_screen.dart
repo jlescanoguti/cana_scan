@@ -16,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  int _indiceTab = 0;
   Map<String, dynamic>? _miGrupo;
 
   @override
@@ -95,9 +96,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (shouldSignOut == true) {
       await SupabaseService.signOut();
       if (context.mounted) {
-        setState(() {
-          _miGrupo = null;
-        });
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
       }
     }
   }
@@ -109,310 +112,395 @@ class _HomeScreenState extends State<HomeScreen> {
     final rol = SupabaseService.currentRol;
     final nombreGrupo = _miGrupo?['nombre'];
 
+    Widget cuerpo;
+    switch (_indiceTab) {
+      case 1:
+        cuerpo = autenticado
+            ? const HistoryScreen(embedded: true)
+            : _buildInvitadoPlaceholder(
+                icon: Icons.history_rounded,
+                titulo: 'Historial de Diagnósticos',
+                mensaje:
+                    'Inicia sesión con tu DNI para guardar y revisar el historial de detecciones de tus parcelas.',
+              );
+        break;
+      case 2:
+        cuerpo = autenticado
+            ? const GroupScreen(embedded: true)
+            : _buildInvitadoPlaceholder(
+                icon: Icons.groups_rounded,
+                titulo: 'Cuadrilla de Trabajo',
+                mensaje:
+                    'Inicia sesión con tu DNI para unirte a una cuadrilla o coordinar labores con tu equipo en campo.',
+              );
+        break;
+      case 0:
+      default:
+        cuerpo = _buildVistaEscanear(
+          autenticado: autenticado,
+          nombre: nombre,
+          rol: rol,
+          nombreGrupo: nombreGrupo,
+        );
+        break;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF3F8F1),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 8),
+      body: cuerpo,
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+      floatingActionButton: _indiceTab == 0
+          ? FloatingActionButton(
+              heroTag: 'infoButton',
+              onPressed: () => AppInfoSheet.show(context),
+              backgroundColor: Colors.white,
+              elevation: 2,
+              shape: const CircleBorder(
+                side: BorderSide(color: Color(0xFFD7E5D7), width: 1),
+              ),
+              child: const Icon(
+                Icons.info_outline_rounded,
+                color: Color(0xFF2D7A2D),
+                size: 26,
+              ),
+            )
+          : null,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _indiceTab,
+        onDestinationSelected: (idx) {
+          setState(() => _indiceTab = idx);
+          if (idx != 0 && SupabaseService.isAuthenticated) {
+            _cargarDatosUsuario();
+          }
+        },
+        backgroundColor: Colors.white,
+        elevation: 3,
+        indicatorColor: const Color(0xFFE8F5E9),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.document_scanner_outlined, color: Color(0xFF6B806B)),
+            selectedIcon:
+                Icon(Icons.document_scanner_rounded, color: Color(0xFF2D7A2D)),
+            label: 'Escanear',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.history_outlined, color: Color(0xFF6B806B)),
+            selectedIcon:
+                Icon(Icons.history_rounded, color: Color(0xFF2D7A2D)),
+            label: 'Historial',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.groups_outlined, color: Color(0xFF6B806B)),
+            selectedIcon:
+                Icon(Icons.groups_rounded, color: Color(0xFF2D7A2D)),
+            label: 'Cuadrilla',
+          ),
+        ],
+      ),
+    );
+  }
 
-              // Barra superior
-              Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2D7A2D),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF2D7A2D).withValues(alpha: 0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Text('🌿', style: TextStyle(fontSize: 26)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'CañaScan',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1B3A1B),
-                        ),
-                      ),
-                      Text(
-                        'Diagnóstico en campo',
-                        style:
-                            TextStyle(fontSize: 12, color: Color(0xFF6B806B)),
+  Widget _buildVistaEscanear({
+    required bool autenticado,
+    required String nombre,
+    required String rol,
+    required String? nombreGrupo,
+  }) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+
+            // Barra superior limpia
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2D7A2D),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF2D7A2D).withValues(alpha: 0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
-                  const Spacer(),
-
-                  if (!autenticado) ...[
-                    // Botón para acceder
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2D7A2D),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
-                      ),
-                      onPressed: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const LoginScreen()),
-                        );
-                        _cargarDatosUsuario();
-                      },
-                      icon: const Icon(Icons.login_rounded, size: 16),
-                      label: const Text('Acceder',
-                          style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w700)),
-                    ),
-                  ] else ...[
-                    // Botón Cuadrilla / Grupo
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: const Color(0xFFD7E5D7), width: 0.6),
-                      ),
-                      child: IconButton(
-                        tooltip: 'Mi Cuadrilla',
-                        icon: const Icon(Icons.groups_rounded,
-                            color: Color(0xFF2D7A2D), size: 22),
-                        onPressed: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const GroupScreen()),
-                          );
-                          _cargarDatosUsuario();
-                        },
+                  child: const Center(
+                    child: Text('🌿', style: TextStyle(fontSize: 24)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CañaScan',
+                      style: TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1B3A1B),
+                        letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(width: 8),
-
-                    // Botón Historial
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: const Color(0xFFD7E5D7), width: 0.6),
-                      ),
-                      child: IconButton(
-                        tooltip: 'Historial',
-                        icon: const Icon(Icons.history_rounded,
-                            color: Color(0xFF2D7A2D), size: 22),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const HistoryScreen()),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-
-                    // Botón Salir
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: const Color(0xFFD7E5D7), width: 0.6),
-                      ),
-                      child: IconButton(
-                        tooltip: 'Cerrar sesión',
-                        icon: const Icon(Icons.logout_rounded,
-                            color: Color(0xFFC62828), size: 18),
-                        onPressed: () => _confirmSignOut(context),
+                    Text(
+                      'Diagnóstico en campo',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: Color(0xFF6B806B),
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
-                ],
-              ),
-
-              const SizedBox(height: 20),
-
-              // Banner de Usuario o de Invitado
-              if (autenticado) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: const Color(0xFFD7E5D7), width: 0.5),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: const Color(0xFFE8F5E9),
-                        foregroundColor: const Color(0xFF2D7A2D),
-                        radius: 20,
-                        child: const Icon(Icons.person_rounded, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              nombre,
-                              style: const TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1B3A1B),
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                Text(
-                                  rol == 'lider'
-                                      ? 'Líder de Cuadrilla'
-                                      : 'Trabajador',
-                                  style: const TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF2D7A2D)),
-                                ),
-                                if (nombreGrupo != null) ...[
-                                  const Text(' · ',
-                                      style:
-                                          TextStyle(color: Color(0xFF6B806B))),
-                                  Expanded(
-                                    child: Text(
-                                      nombreGrupo,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          fontSize: 11.5,
-                                          color: Color(0xFF4A5D4A)),
-                                    ),
-                                  ),
-                                ] else ...[
-                                  const Text(' · Sin cuadrilla',
-                                      style: TextStyle(
-                                          fontSize: 11.5,
-                                          color: Color(0xFF6B806B))),
-                                ],
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
-              ] else ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFC8E6C9)),
+                const Spacer(),
+
+                if (!autenticado) ...[
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2D7A2D),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      );
+                      _cargarDatosUsuario();
+                    },
+                    icon: const Icon(Icons.login_rounded, size: 16),
+                    label: const Text('Acceder',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.info_outline_rounded,
-                          color: Color(0xFF2D7A2D), size: 20),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Modo Invitado: puedes escanear libremente. Inicia sesión con DNI para guardar en tu cuadrilla.',
-                          style: TextStyle(
+                ] else ...[
+                  // Chip compacto con usuario y rol + botón salir discreto
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: const Color(0xFFD7E5D7), width: 0.8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircleAvatar(
+                          radius: 13,
+                          backgroundColor: const Color(0xFFE8F5E9),
+                          child: Text(
+                            nombre.isNotEmpty ? nombre[0].toUpperCase() : 'U',
+                            style: const TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF1B3A1B),
-                              height: 1.3),
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2D7A2D),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 85),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                nombre.split(' ').first,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1B3A1B),
+                                ),
+                              ),
+                              Text(
+                                rol == 'lider' ? 'Líder' : 'Empleado',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF2D7A2D),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          iconSize: 17,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.logout_rounded,
+                              color: Color(0xFFC62828)),
+                          tooltip: 'Cerrar sesión',
+                          onPressed: () => _confirmSignOut(context),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
+            ),
 
-              const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-              const Text(
-                'Diagnostica tu cultivo',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF4A5D4A),
-                  letterSpacing: 0.3,
+            // Chip de estado / cuadrilla activa
+            if (autenticado && nombreGrupo != null) ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: const Color(0xFFD7E5D7), width: 0.8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.hub_rounded,
+                        size: 16, color: Color(0xFF2D7A2D)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Cuadrilla activa: $nombreGrupo',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1B3A1B),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Captura una hoja para empezar',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF1B3A1B),
-                  height: 1.15,
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              _buildActionCard(
-                title: 'Tomar foto',
-                subtitle: 'Usa la cámara para capturar la hoja en campo',
-                icon: Icons.camera_alt_rounded,
-                iconColor: const Color(0xFF2D7A2D),
-                onTap: () => _pickImage(context, ImageSource.camera),
-              ),
-
-              const SizedBox(height: 12),
-
-              _buildActionCard(
-                title: 'Galería',
-                subtitle: 'Selecciona una imagen guardada en tu teléfono',
-                icon: Icons.photo_library_rounded,
-                iconColor: const Color(0xFF1B3A1B),
-                onTap: () => _pickImage(context, ImageSource.gallery),
-              ),
-
-              const SizedBox(height: 60),
             ],
-          ),
+
+            const SizedBox(height: 24),
+
+            const Text(
+              'Diagnostica tu cultivo',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF4A5D4A),
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Captura una hoja para empezar',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF1B3A1B),
+                height: 1.15,
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            _buildActionCard(
+              title: 'Tomar foto',
+              subtitle: 'Usa la cámara para capturar la hoja en campo',
+              icon: Icons.camera_alt_rounded,
+              iconColor: const Color(0xFF2D7A2D),
+              onTap: () => _pickImage(context, ImageSource.camera),
+            ),
+
+            const SizedBox(height: 12),
+
+            _buildActionCard(
+              title: 'Galería',
+              subtitle: 'Selecciona una imagen guardada en tu teléfono',
+              icon: Icons.photo_library_rounded,
+              iconColor: const Color(0xFF1B3A1B),
+              onTap: () => _pickImage(context, ImageSource.gallery),
+            ),
+
+            const SizedBox(height: 60),
+          ],
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'infoButton',
-        onPressed: () => AppInfoSheet.show(context),
-        backgroundColor: Colors.white,
-        elevation: 2,
-        shape: const CircleBorder(
-          side: BorderSide(color: Color(0xFFD7E5D7), width: 1),
-        ),
-        child: const Icon(
-          Icons.info_outline_rounded,
-          color: Color(0xFF2D7A2D),
-          size: 26,
+    );
+  }
+
+  Widget _buildInvitadoPlaceholder({
+    required IconData icon,
+    required String titulo,
+    required String mensaje,
+  }) {
+    return SafeArea(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(28.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE8F5E9),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 48, color: const Color(0xFF2D7A2D)),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                titulo,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1B3A1B),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                mensaje,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF4A5D4A),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2D7A2D),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  );
+                  _cargarDatosUsuario();
+                },
+                icon: const Icon(Icons.login_rounded, size: 18),
+                label: const Text('Iniciar Sesión',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
         ),
       ),
     );
