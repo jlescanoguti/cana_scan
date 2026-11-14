@@ -12,6 +12,7 @@ class GroupScreen extends StatefulWidget {
 
 class _GroupScreenState extends State<GroupScreen> {
   bool _cargando = true;
+  String? _error;
   Map<String, dynamic>? _miGrupo;
   List<Map<String, dynamic>> _miembros = [];
   List<Map<String, dynamic>> _misGruposLider = [];
@@ -36,9 +37,13 @@ class _GroupScreenState extends State<GroupScreen> {
   Future<void> _cargarDatosGrupo() async {
     setState(() {
       _cargando = true;
+      _error = null;
     });
 
     try {
+      // Refrescar el perfil por si otro usuario cambió la cuadrilla
+      // (por ejemplo, si el líder nos removió o disolvió el grupo)
+      await SupabaseService.loadProfile();
       final grupo = await SupabaseService.getMiGrupo();
       List<Map<String, dynamic>> miembros = [];
       if (grupo != null) {
@@ -60,10 +65,11 @@ class _GroupScreenState extends State<GroupScreen> {
           _cargando = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           _cargando = false;
+          _error = e.toString();
         });
       }
     }
@@ -649,8 +655,24 @@ class _GroupScreenState extends State<GroupScreen> {
     );
 
     if (confirmar == true) {
-      await SupabaseService.removerMiembro(usuarioId);
-      await _cargarDatosGrupo();
+      try {
+        await SupabaseService.removerMiembro(usuarioId);
+        await _cargarDatosGrupo();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$nombre fue removido de la cuadrilla.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString()),
+              backgroundColor: const Color(0xFFC62828),
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -688,11 +710,48 @@ class _GroupScreenState extends State<GroupScreen> {
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(20),
-                child: _miGrupo == null
-                    ? _buildVistaSinGrupo()
-                    : _buildVistaConGrupo(),
+                child: _error != null
+                    ? _buildVistaError()
+                    : _miGrupo == null
+                        ? _buildVistaSinGrupo()
+                        : _buildVistaConGrupo(),
               ),
             ),
+    );
+  }
+
+  Widget _buildVistaError() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 80),
+      child: Center(
+        child: Column(
+          children: [
+            const Icon(Icons.cloud_off_rounded,
+                size: 56, color: Color(0xFFA0B0A0)),
+            const SizedBox(height: 12),
+            const Text(
+              'No se pudo cargar tu cuadrilla',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1B3A1B),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12.5, color: Color(0xFF4A5D4A)),
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: _cargarDatosGrupo,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -854,7 +913,7 @@ class _GroupScreenState extends State<GroupScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Ingresa el código de 6 caracteres que te proporcionó tu Líder o capataz.',
+                'Ingresa el código de invitación que te proporcionó tu Líder o capataz.',
                 style: TextStyle(fontSize: 12.5, color: Color(0xFF4A5D4A)),
               ),
               const SizedBox(height: 14),
@@ -862,7 +921,7 @@ class _GroupScreenState extends State<GroupScreen> {
                 controller: _codigoController,
                 textCapitalization: TextCapitalization.characters,
                 decoration: InputDecoration(
-                  hintText: 'ej: CANA-784',
+                  hintText: 'ej: CANA-1234',
                   prefixIcon: const Icon(Icons.key_rounded, size: 20),
                   filled: true,
                   fillColor: const Color(0xFFF9FBF9),

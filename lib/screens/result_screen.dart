@@ -112,6 +112,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Future<void> _predecir() async {
     try {
+      // El diagnóstico siempre lo hace la API de Railway (requiere internet)
       final resultado = await ApiService.predict(widget.imageFile!);
       if (mounted) {
         setState(() {
@@ -213,7 +214,7 @@ class _ResultScreenState extends State<ResultScreen> {
       // 2. Guardar en Base de Datos
       final grupoId = esGrupal ? SupabaseService.currentGrupoId : null;
 
-      final ok = await SupabaseService.saveDiagnosisRecord(
+      await SupabaseService.saveDiagnosisRecord(
         imageUrl: uploadedUrl,
         estadoGeneral: estadoGeneral,
         diagnosticoPrincipal: diagPrincipal,
@@ -230,14 +231,61 @@ class _ResultScreenState extends State<ResultScreen> {
       if (mounted) {
         setState(() {
           _guardando = false;
-          _yaGuardado = ok;
+          _yaGuardado = true;
           _mensajeGuardado = esGrupal
               ? 'Reporte publicado en tu cuadrilla con éxito.'
               : 'Diagnóstico guardado en tu historial personal.';
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _guardando = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _guardando = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFC62828),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Pide confirmación antes de guardar una afección solo en el historial
+  /// personal, porque la cuadrilla no verá el reporte.
+  Future<void> _confirmarGuardarSoloPersonal() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '¿Guardar solo en tu historial personal?',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+        content: const Text(
+          'Tu cuadrilla no verá este reporte ni aparecerá en su mapa, y '
+          'después no podrás publicarlo en la cuadrilla.',
+          style: TextStyle(fontSize: 13, color: Color(0xFF4A5D4A)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar',
+                style: TextStyle(color: Color(0xFF6B806B))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2D7A2D),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sí, solo personal'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      await _guardarEnHistorial(esGrupal: false);
     }
   }
 
@@ -572,11 +620,14 @@ class _ResultScreenState extends State<ResultScreen> {
                       backgroundColor: const Color(0xFF2D7A2D),
                       foregroundColor: Colors.white,
                     ),
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const LoginScreen()),
                       );
+                      // Al volver con sesión iniciada se muestran las
+                      // opciones de guardado
+                      if (mounted) setState(() {});
                     },
                     icon: const Icon(Icons.login_rounded, size: 16),
                     label: const Text('Acceder con mi DNI'),
@@ -657,7 +708,7 @@ class _ResultScreenState extends State<ResultScreen> {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: _guardando ? null : () => _guardarEnHistorial(esGrupal: false),
+                  onPressed: _guardando ? null : _confirmarGuardarSoloPersonal,
                   icon: const Icon(Icons.bookmark_border_rounded, size: 18),
                   label: const Text('Guardar solo en mi historial personal'),
                 ),
@@ -1053,7 +1104,10 @@ class BoundingBoxPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant BoundingBoxPainter oldDelegate) =>
+      oldDelegate.detecciones != detecciones ||
+      oldDelegate.scaleX != scaleX ||
+      oldDelegate.scaleY != scaleY;
 }
 
 Color _colorPorClaseEnPainter(String clase, Map<String, Color> coloresClase) {

@@ -32,10 +32,6 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
-
-    aaptOptions {
-        noCompress.add("tflite")
-    }
 }
 
 kotlin {

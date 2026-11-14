@@ -26,14 +26,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _cargarDatosUsuario() async {
-    if (!SupabaseService.isAuthenticated) return;
+    if (!SupabaseService.isAuthenticated) {
+      if (mounted) setState(() => _miGrupo = null);
+      return;
+    }
 
-    await SupabaseService.loadProfile();
-    final grupo = await SupabaseService.getMiGrupo();
-    if (mounted) {
-      setState(() {
-        _miGrupo = grupo;
-      });
+    try {
+      await SupabaseService.loadProfile();
+      final grupo = await SupabaseService.getMiGrupo();
+      if (mounted) {
+        setState(() {
+          _miGrupo = grupo;
+        });
+      }
+    } catch (_) {
+      // Sin conexión: se mantiene la información ya cargada
+      if (mounted) setState(() {});
     }
   }
 

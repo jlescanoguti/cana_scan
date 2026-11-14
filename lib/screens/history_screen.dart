@@ -61,7 +61,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'No se pudo cargar el historial: $e';
+          _error = 'No se pudo cargar el historial.\n$e';
           _cargando = false;
         });
       }
@@ -113,22 +113,39 @@ class _HistoryScreenState extends State<HistoryScreen>
     );
 
     if (confirmar == true) {
-      final ok = await SupabaseService.actualizarEstadoTratamiento(
-        scanId: id,
-        nuevoEstado: nuevoEstado,
-      );
-      if (ok) {
+      try {
+        await SupabaseService.actualizarEstadoTratamiento(
+          scanId: id,
+          nuevoEstado: nuevoEstado,
+        );
         await _cargarHistorial();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Estado actualizado a: $nuevoEstado')),
+            SnackBar(
+              content: Text(nuevoEstado == 'tratado'
+                  ? 'Foco marcado como tratado.'
+                  : 'Reporte marcado como falsa alarma.'),
+            ),
           );
         }
+      } catch (e) {
+        _mostrarError(e);
       }
     }
   }
 
-  Future<void> _eliminarRegistro(String id) async {
+  void _mostrarError(Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.toString()),
+        backgroundColor: const Color(0xFFC62828),
+      ),
+    );
+  }
+
+  Future<void> _eliminarRegistro(Map<String, dynamic> registro) async {
+    final id = registro['id'];
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -158,12 +175,16 @@ class _HistoryScreenState extends State<HistoryScreen>
     );
 
     if (confirmar == true) {
-      final ok = await SupabaseService.deleteHistoryRecord(id);
-      if (ok && mounted) {
-        setState(() {
-          _historialGrupal.removeWhere((item) => item['id'] == id);
-          _historialPersonal.removeWhere((item) => item['id'] == id);
-        });
+      try {
+        await SupabaseService.deleteHistoryRecord(registro);
+        if (mounted) {
+          setState(() {
+            _historialGrupal.removeWhere((item) => item['id'] == id);
+            _historialPersonal.removeWhere((item) => item['id'] == id);
+          });
+        }
+      } catch (e) {
+        _mostrarError(e);
       }
     }
   }
@@ -234,8 +255,25 @@ class _HistoryScreenState extends State<HistoryScreen>
             )
           : _error != null
               ? Center(
-                  child: Text(_error!,
-                      style: const TextStyle(color: Color(0xFFC62828))),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Color(0xFFC62828)),
+                        ),
+                        const SizedBox(height: 16),
+                        TextButton.icon(
+                          onPressed: _cargarHistorial,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Reintentar'),
+                        ),
+                      ],
+                    ),
+                  ),
                 )
               : tieneGrupo && _tabController != null
                   ? TabBarView(
@@ -297,8 +335,6 @@ class _HistoryScreenState extends State<HistoryScreen>
       );
     }
 
-    final esLider = SupabaseService.currentRol == 'lider';
-
     return RefreshIndicator(
       color: const Color(0xFF2D7A2D),
       onRefresh: _cargarHistorial,
@@ -318,6 +354,7 @@ class _HistoryScreenState extends State<HistoryScreen>
           final lng = item['longitud'] as num?;
           final esAfeccion = estado == 'afeccion';
           final esPropio = item['user_id'] == SupabaseService.currentUser?.id;
+          final puedeTratar = SupabaseService.puedeGestionarTratamiento(item);
 
           return Container(
             decoration: BoxDecoration(
@@ -409,7 +446,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                           IconButton(
                             icon: const Icon(Icons.delete_outline_rounded,
                                 color: Color(0xFFC62828), size: 20),
-                            onPressed: () => _eliminarRegistro(item['id']),
+                            onPressed: () => _eliminarRegistro(item),
                           ),
                       ],
                     ),
@@ -506,8 +543,9 @@ class _HistoryScreenState extends State<HistoryScreen>
                       ],
                     ),
 
-                    // Acciones de gestión para el Líder si está pendiente
-                    if (esLider && esAfeccion && tratamiento == 'pendiente') ...[
+                    // Acciones de gestión (líder de la cuadrilla o autor de
+                    // un escaneo personal) si está pendiente
+                    if (puedeTratar && esAfeccion && tratamiento == 'pendiente') ...[
                       const Divider(height: 18),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,

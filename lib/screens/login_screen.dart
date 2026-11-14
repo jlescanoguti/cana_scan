@@ -32,15 +32,16 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _cargarCredencialesGuardadas() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // Versiones anteriores guardaban el PIN en texto plano: se elimina
+      await prefs.remove('saved_pin');
+
       final recordar = prefs.getBool('remember_credentials') ?? false;
       if (recordar) {
         final dni = prefs.getString('saved_dni') ?? '';
-        final pin = prefs.getString('saved_pin') ?? '';
         if (mounted) {
           setState(() {
             _recordarCredenciales = true;
             _dniController.text = dni;
-            _pinController.text = pin;
           });
         }
       }
@@ -72,19 +73,12 @@ class _LoginScreenState extends State<LoginScreen> {
       if (_recordarCredenciales) {
         await prefs.setBool('remember_credentials', true);
         await prefs.setString('saved_dni', dni);
-        await prefs.setString('saved_pin', pin);
       } else {
         await prefs.remove('remember_credentials');
         await prefs.remove('saved_dni');
-        await prefs.remove('saved_pin');
       }
 
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
-      }
+      if (mounted) _continuarAHome();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -92,6 +86,19 @@ class _LoginScreenState extends State<LoginScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  /// Si se llegó al login desde otra pantalla (Home o Resultado) se vuelve a
+  /// ella; si el login es la raíz (tras cerrar sesión) se abre Home.
+  void _continuarAHome() {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop(true);
+    } else {
+      navigator.pushReplacement(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
     }
   }
 
@@ -210,18 +217,25 @@ class _LoginScreenState extends State<LoginScreen> {
                                 errorModal = null;
                               });
 
-                              final pregunta =
-                                  await SupabaseService.getPreguntaAuxilio(dni);
-
-                              setModalState(() {
-                                buscandoDni = false;
-                                if (pregunta == null) {
-                                  errorModal =
-                                      'No se encontró una cuenta con ese DNI';
-                                } else {
-                                  preguntaCargada = pregunta;
-                                }
-                              });
+                              try {
+                                final pregunta =
+                                    await SupabaseService.getPreguntaAuxilio(
+                                        dni);
+                                setModalState(() {
+                                  buscandoDni = false;
+                                  if (pregunta == null) {
+                                    errorModal =
+                                        'No se encontró una cuenta con ese DNI';
+                                  } else {
+                                    preguntaCargada = pregunta;
+                                  }
+                                });
+                              } catch (e) {
+                                setModalState(() {
+                                  buscandoDni = false;
+                                  errorModal = e.toString();
+                                });
+                              }
                             },
                       icon: buscandoDni
                           ? const SizedBox(
@@ -609,7 +623,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 });
                               },
                               child: const Text(
-                                'Recordar datos',
+                                'Recordar mi DNI',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Color(0xFF4A5D4A),
@@ -686,13 +700,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            onPressed: () {
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const HomeScreen()),
-                              );
-                            },
+                            onPressed: _continuarAHome,
                             icon: const Icon(Icons.flash_on_rounded, size: 18),
                             label: const Text(
                               'Continuar sin cuenta (Invitado)',

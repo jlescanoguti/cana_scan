@@ -32,7 +32,9 @@ class _MapScreenState extends State<MapScreen> {
     return widget.escaneos.where((item) {
       if (item['latitud'] == null || item['longitud'] == null) return false;
       if (_soloPendientes) {
-        return item['estado_tratamiento'] != 'tratado';
+        // 'tratado' y 'descartado' (falsa alarma) ya no son focos activos
+        final estado = item['estado_tratamiento'] ?? 'pendiente';
+        return estado == 'pendiente';
       }
       return true;
     }).toList();
@@ -127,7 +129,7 @@ class _MapScreenState extends State<MapScreen> {
                 markers: focos.map((foco) {
                   final lat = (foco['latitud'] as num).toDouble();
                   final lng = (foco['longitud'] as num).toDouble();
-                  final tratado = foco['estado_tratamiento'] == 'tratado';
+                  final estilo = _EstiloEstado.de(foco['estado_tratamiento']);
 
                   return Marker(
                     point: LatLng(lat, lng),
@@ -142,9 +144,7 @@ class _MapScreenState extends State<MapScreen> {
                       },
                       child: Container(
                         decoration: BoxDecoration(
-                          color: tratado
-                              ? const Color(0xFF2D7A2D)
-                              : const Color(0xFFC62828),
+                          color: estilo.color,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2.5),
                           boxShadow: [
@@ -156,9 +156,7 @@ class _MapScreenState extends State<MapScreen> {
                           ],
                         ),
                         child: Icon(
-                          tratado
-                              ? Icons.check_rounded
-                              : Icons.warning_rounded,
+                          estilo.iconoMarcador,
                           color: Colors.white,
                           size: 22,
                         ),
@@ -228,7 +226,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget _buildTarjetaDetalle(Map<String, dynamic> foco) {
     final diag = foco['diagnostico_principal'] ?? 'Afección detectada';
-    final tratado = foco['estado_tratamiento'] == 'tratado';
+    final estilo = _EstiloEstado.de(foco['estado_tratamiento']);
     final autor = foco['usuario_nombre'] ?? 'Cuadrilla';
     final lat = (foco['latitud'] as num).toDouble();
     final lng = (foco['longitud'] as num).toDouble();
@@ -305,32 +303,20 @@ class _MapScreenState extends State<MapScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: tratado
-                      ? const Color(0xFFE8F5E9)
-                      : const Color(0xFFFFEBEE),
+                  color: estilo.fondo,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      tratado
-                          ? Icons.check_circle_rounded
-                          : Icons.warning_rounded,
-                      size: 14,
-                      color: tratado
-                          ? const Color(0xFF2D7A2D)
-                          : const Color(0xFFC62828),
-                    ),
+                    Icon(estilo.iconoInsignia, size: 14, color: estilo.color),
                     const SizedBox(width: 4),
                     Text(
-                      tratado ? 'Tratada en campo' : 'Pendiente de tratamiento',
+                      estilo.etiqueta,
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: tratado
-                            ? const Color(0xFF2D7A2D)
-                            : const Color(0xFFC62828),
+                        color: estilo.color,
                       ),
                     ),
                   ],
@@ -356,5 +342,57 @@ class _MapScreenState extends State<MapScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Colores, iconos y textos según el estado de tratamiento del foco
+class _EstiloEstado {
+  final Color color;
+  final Color fondo;
+  final IconData iconoMarcador;
+  final IconData iconoInsignia;
+  final String etiqueta;
+
+  const _EstiloEstado({
+    required this.color,
+    required this.fondo,
+    required this.iconoMarcador,
+    required this.iconoInsignia,
+    required this.etiqueta,
+  });
+
+  static const _tratado = _EstiloEstado(
+    color: Color(0xFF2D7A2D),
+    fondo: Color(0xFFE8F5E9),
+    iconoMarcador: Icons.check_rounded,
+    iconoInsignia: Icons.check_circle_rounded,
+    etiqueta: 'Tratada en campo',
+  );
+
+  static const _descartado = _EstiloEstado(
+    color: Color(0xFF5F5E5A),
+    fondo: Color(0xFFF1EFE8),
+    iconoMarcador: Icons.close_rounded,
+    iconoInsignia: Icons.cancel_outlined,
+    etiqueta: 'Falsa alarma',
+  );
+
+  static const _pendiente = _EstiloEstado(
+    color: Color(0xFFC62828),
+    fondo: Color(0xFFFFEBEE),
+    iconoMarcador: Icons.warning_rounded,
+    iconoInsignia: Icons.warning_rounded,
+    etiqueta: 'Pendiente de tratamiento',
+  );
+
+  static _EstiloEstado de(Object? estado) {
+    switch (estado) {
+      case 'tratado':
+        return _tratado;
+      case 'descartado':
+        return _descartado;
+      default:
+        return _pendiente;
+    }
   }
 }

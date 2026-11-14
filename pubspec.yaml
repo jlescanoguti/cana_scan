@@ -1,5 +1,5 @@
 name: cana_scan
-description: "A new Flutter project."
+description: "CañaScan: diagnóstico de afecciones en hojas de caña de azúcar."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -42,8 +42,6 @@ dependencies:
   url_launcher: ^6.3.1
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
-  tflite_flutter: ^0.12.1
-  image: ^4.12.0
 
 dev_dependencies:
   flutter_test:
@@ -62,8 +60,6 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   uses-material-design: true
-  # assets:
-  #   - assets/models/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

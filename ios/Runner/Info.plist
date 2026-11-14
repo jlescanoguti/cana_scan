@@ -7,7 +7,13 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Cana Scan</string>
+	<string>CañaScan</string>
+	<key>NSCameraUsageDescription</key>
+	<string>CañaScan usa la cámara para fotografiar las hojas de caña y diagnosticar afecciones.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CañaScan necesita acceder a tus fotos para analizar imágenes de hojas de caña guardadas.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>CañaScan usa tu ubicación para registrar en el mapa dónde se detectó cada foco de infección.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

@@ -1,11 +1,22 @@
 import 'dart:io';
-import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// Acceso a Supabase.
+///
+/// Las operaciones sensibles (registro de perfil, recuperación de PIN,
+/// cuadrillas y tratamiento) se hacen mediante funciones RPC definidas en
+/// `supabase/migrations/20261112_seguridad_cuadrillas.sql`, que validan los
+/// permisos en el servidor. Los errores se lanzan como `String` con un mensaje
+/// listo para mostrar al usuario.
 class SupabaseService {
   static const String supabaseUrl = 'https://rdrcnsiwxuxzuuvdgysu.supabase.co';
   static const String supabaseAnonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkcmNuc2l3eHV4enV1dmRneXN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5NDY3NjksImV4cCI6MjEwNTUyMjc2OX0.KvEmVYn7aJJvpJ93oK8aevkwii5hBTOklVdElylXZHU';
+
+  static const String _bucketEscaneos = 'escaneos';
+
+  /// Columnas de `perfiles` que la app puede leer (nunca `respuesta_auxilio`).
+  static const String _columnasPerfil = 'id, dni, nombre_completo, grupo_id, rol';
 
   /// Perfil del usuario activo en memoria
   static Map<String, dynamic>? _currentProfile;
@@ -39,109 +50,119 @@ class SupabaseService {
 
   /// Nombre del usuario actual
   static String get currentNombre {
-    if (_currentProfile != null && _currentProfile!['nombre_completo'] != null) {
-      return _currentProfile!['nombre_completo'].toString();
-    }
-    return 'Agricultor';
+    final nombre = _currentProfile?['nombre_completo'];
+    return nombre != null ? nombre.toString() : 'Agricultor';
   }
 
-  /// Rol del usuario ('lider' o 'empleado')
+  /// Rol del usuario en su cuadrilla activa ('lider' o 'empleado')
   static String get currentRol {
-    if (_currentProfile != null && _currentProfile!['rol'] != null) {
-      return _currentProfile!['rol'].toString();
-    }
-    return 'empleado';
+    final rol = _currentProfile?['rol'];
+    return rol != null ? rol.toString() : 'empleado';
   }
 
   /// ID del grupo actual del usuario (o null si es independiente)
   static String? get currentGrupoId {
-    if (_currentProfile != null && _currentProfile!['grupo_id'] != null) {
-      return _currentProfile!['grupo_id'].toString();
-    }
-    return null;
+    final grupoId = _currentProfile?['grupo_id'];
+    return grupoId?.toString();
   }
 
-  /// Mapea un DNI a un email seguro interno de Supabase
-  static String dniToEmail(String dni) {
-    return '${dni.trim()}@canascan.app';
-  }
+  /// Mapea un DNI a un email interno de Supabase
+  static String dniToEmail(String dni) => '${dni.trim()}@canascan.app';
 
-  /// Mapea un PIN numérico a una contraseña segura interna
-  static String pinToPassword(String pin) {
-    return 'pin_${pin.trim()}';
-  }
+  /// Mapea un PIN numérico a la contraseña interna
+  static String pinToPassword(String pin) => 'pin_${pin.trim()}';
 
   // ========================================================================
   // AUTENTICACIÓN Y PERFIL
   // ========================================================================
 
-  /// Registra una nueva cuenta por DNI + PIN + Datos de auxilio
-  static Future<AuthResponse> signUp({
+  /// Registra una nueva cuenta por DNI + PIN + datos de auxilio.
+  ///
+  /// Si un registro anterior creó la cuenta pero no el perfil (por ejemplo,
+  /// por un corte de conexión), se completa el perfil usando el mismo PIN.
+  static Future<void> signUp({
     required String dni,
     required String nombreCompleto,
     required String pin,
     required String preguntaAuxilio,
     required String respuestaAuxilio,
   }) async {
+    final cleanDni = dni.trim();
+    final email = dniToEmail(cleanDni);
+    final password = pinToPassword(pin);
+
     try {
-      final cleanDni = dni.trim();
-      final email = dniToEmail(cleanDni);
-      final password = pinToPassword(pin);
-
-      final response = await client.auth.signUp(
-        email: email,
-        password: password,
-        data: {'dni': cleanDni, 'nombre': nombreCompleto.trim()},
-      );
-
-      final user = response.user;
-      if (user != null) {
-        // Insertar en la tabla perfiles
-        await client.from('perfiles').insert({
-          'id': user.id,
-          'dni': cleanDni,
-          'nombre_completo': nombreCompleto.trim(),
-          'pregunta_auxilio': preguntaAuxilio.trim(),
-          'respuesta_auxilio': respuestaAuxilio.trim().toLowerCase(),
-          'rol': 'empleado',
-          'grupo_id': null,
-        });
+      try {
+        await client.auth.signUp(
+          email: email,
+          password: password,
+          data: {'dni': cleanDni, 'nombre': nombreCompleto.trim()},
+        );
+      } on AuthException catch (e) {
+        if (!_esUsuarioYaRegistrado(e.message)) rethrow;
+        // Cuenta existente: si el PIN coincide y no tiene perfil, lo completamos
+        try {
+          await client.auth
+              .signInWithPassword(email: email, password: password);
+        } on AuthException {
+          throw 'Este DNI ya cuenta con una cuenta registrada.';
+        }
+        final perfil = await client
+            .from('perfiles')
+            .select('id')
+            .eq('id', client.auth.currentUser!.id)
+            .maybeSingle();
+        if (perfil != null) {
+          await client.auth.signOut();
+          throw 'Este DNI ya cuenta con una cuenta registrada.';
+        }
       }
 
-      return response;
+      if (client.auth.currentUser == null) {
+        throw 'No se pudo iniciar la sesión del registro. Revisa que la '
+            'confirmación por correo esté desactivada en Supabase.';
+      }
+
+      await client.rpc('registrar_perfil', params: {
+        'p_nombre': nombreCompleto.trim(),
+        'p_pregunta': preguntaAuxilio.trim(),
+        'p_respuesta': respuestaAuxilio.trim(),
+      });
     } on AuthException catch (e) {
       throw _traducirErrorAuth(e.message);
-    } catch (e) {
-      if (e.toString().contains('duplicate key') ||
-          e.toString().contains('perfiles_dni_key')) {
+    } on PostgrestException catch (e) {
+      if (e.message.contains('duplicate key') ||
+          e.message.contains('perfiles_dni_key')) {
         throw 'Este DNI ya cuenta con una cuenta registrada.';
       }
-      throw 'Error de conexión. Verifica tu internet e inténtalo de nuevo.';
+      throw e.message;
+    } on String {
+      rethrow;
+    } catch (e) {
+      throw _mensajeError(e);
     }
   }
 
   /// Inicia sesión con DNI y PIN
-  static Future<AuthResponse> signIn({
+  static Future<void> signIn({
     required String dni,
     required String pin,
   }) async {
     try {
-      final email = dniToEmail(dni);
-      final password = pinToPassword(pin);
-
-      final response = await client.auth.signInWithPassword(
-        email: email,
-        password: password,
+      await client.auth.signInWithPassword(
+        email: dniToEmail(dni),
+        password: pinToPassword(pin),
       );
-
-      // Cargar perfil en memoria
-      await loadProfile();
-      return response;
     } on AuthException catch (e) {
       throw _traducirErrorAuth(e.message);
-    } catch (_) {
-      throw 'Error de conexión. Verifica tu señal de internet.';
+    } catch (e) {
+      throw _mensajeError(e);
     }
+
+    // Cargar perfil en memoria (si falla, la sesión sigue siendo válida)
+    try {
+      await loadProfile();
+    } catch (_) {}
   }
 
   /// Carga el perfil del usuario activo en memoria
@@ -155,14 +176,13 @@ class SupabaseService {
     try {
       final data = await client
           .from('perfiles')
-          .select()
+          .select(_columnasPerfil)
           .eq('id', user.id)
           .maybeSingle();
-
       _currentProfile = data;
       return data;
-    } catch (_) {
-      return null;
+    } catch (e) {
+      throw _mensajeError(e);
     }
   }
 
@@ -172,59 +192,48 @@ class SupabaseService {
     await client.auth.signOut();
   }
 
-  /// Obtiene la pregunta de auxilio para un DNI (para recuperación de PIN)
+  /// Obtiene la pregunta de auxilio de un DNI (funciona sin sesión).
+  /// Devuelve null si el DNI no está registrado.
   static Future<String?> getPreguntaAuxilio(String dni) async {
     try {
-      final data = await client
-          .from('perfiles')
-          .select('pregunta_auxilio')
-          .eq('dni', dni.trim())
-          .maybeSingle();
-
-      if (data != null && data['pregunta_auxilio'] != null) {
-        return data['pregunta_auxilio'].toString();
-      }
-      return null;
-    } catch (_) {
-      return null;
+      final pregunta = await client.rpc(
+        'obtener_pregunta_auxilio',
+        params: {'p_dni': dni.trim()},
+      );
+      return pregunta?.toString();
+    } catch (e) {
+      throw _mensajeError(e);
     }
   }
 
-  /// Verifica la respuesta de auxilio y restablece el PIN
-  static Future<bool> restablecerPinConAuxilio({
+  /// Verifica la respuesta de auxilio en el servidor y restablece el PIN
+  static Future<void> restablecerPinConAuxilio({
     required String dni,
     required String respuestaAuxilio,
     required String nuevoPin,
   }) async {
+    final Object? estado;
     try {
-      final cleanDni = dni.trim();
-      final data = await client
-          .from('perfiles')
-          .select('id, respuesta_auxilio')
-          .eq('dni', cleanDni)
-          .maybeSingle();
-
-      if (data == null) throw 'DNI no encontrado';
-
-      final respuestaGuardada = data['respuesta_auxilio']?.toString() ?? '';
-      if (respuestaGuardada != respuestaAuxilio.trim().toLowerCase()) {
-        throw 'La respuesta de auxilio no coincide.';
-      }
-
-      // Iniciar sesión temporal con credencial de servicio o actualizar contraseña
-      // Si el usuario recuerda su respuesta, iniciamos sesión para actualizar password
-      // Alternativa: Iniciar sesión temporal usando la función de Supabase
-      // Para este caso, invocamos la actualización de usuario
-      await client.rpc('restablecer_pin_usuario', params: {
-        'p_dni': cleanDni,
-        'p_respuesta': respuestaAuxilio.trim().toLowerCase(),
-        'p_nuevo_password': pinToPassword(nuevoPin),
+      estado = await client.rpc('restablecer_pin', params: {
+        'p_dni': dni.trim(),
+        'p_respuesta': respuestaAuxilio.trim(),
+        'p_nuevo_pin': nuevoPin.trim(),
       });
-
-      return true;
     } catch (e) {
-      if (e.toString().contains('no coincide')) rethrow;
-      throw 'No se pudo restablecer el PIN. Inténtalo más tarde.';
+      throw _mensajeError(e);
+    }
+
+    switch (estado) {
+      case 'ok':
+        return;
+      case 'respuesta_incorrecta':
+        throw 'La respuesta de auxilio no coincide.';
+      case 'bloqueado':
+        throw 'Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.';
+      case 'pin_invalido':
+        throw 'El nuevo PIN debe tener entre 4 y 6 números.';
+      default:
+        throw 'No se pudo restablecer el PIN. Inténtalo más tarde.';
     }
   }
 
@@ -232,160 +241,61 @@ class SupabaseService {
   // GESTIÓN DE CUADRILLAS / GRUPOS DE TRABAJO
   // ========================================================================
 
-  /// Genera un código de invitación aleatorio (ej: CANA-784)
-  static String _generarCodigoGrupo() {
-    final random = Random();
-    final numero = random.nextInt(900) + 100;
-    return 'CANA-$numero';
-  }
-
   /// Crea un nuevo grupo de trabajo (el creador pasa a ser 'lider')
   static Future<Map<String, dynamic>> crearGrupo(String nombreGrupo) async {
-    final user = currentUser;
-    if (user == null) throw 'Debes iniciar sesión para crear un grupo.';
-
-    final codigo = _generarCodigoGrupo();
-
-    final grupo = await client
-        .from('grupos')
-        .insert({
-          'nombre': nombreGrupo.trim(),
-          'codigo_invitacion': codigo,
-          'lider_id': user.id,
-        })
-        .select()
-        .single();
-
-    final grupoId = grupo['id'];
-
-    // Actualizar perfil del usuario a Líder y asignar grupo_id
-    await client.from('perfiles').update({
-      'grupo_id': grupoId,
-      'rol': 'lider',
-    }).eq('id', user.id);
-
+    _exigirSesion('crear una cuadrilla');
+    final grupo = await _rpc('crear_grupo', {'p_nombre': nombreGrupo.trim()});
     await loadProfile();
-    return grupo;
+    return Map<String, dynamic>.from(grupo as Map);
   }
 
-  /// Unirse a un grupo mediante código de invitación (rol 'empleado')
+  /// Unirse a un grupo mediante código de invitación
   static Future<Map<String, dynamic>> unirseAGrupo(String codigo) async {
-    final user = currentUser;
-    if (user == null) throw 'Debes iniciar sesión para unirte a un grupo.';
-
-    final cleanCodigo = codigo.trim().toUpperCase();
-
-    final grupo = await client
-        .from('grupos')
-        .select()
-        .eq('codigo_invitacion', cleanCodigo)
-        .maybeSingle();
-
-    if (grupo == null) {
-      throw 'No se encontró ninguna cuadrilla con el código $cleanCodigo.';
-    }
-
-    final grupoId = grupo['id'];
-
-    // Asignar al perfil
-    await client.from('perfiles').update({
-      'grupo_id': grupoId,
-      'rol': 'empleado',
-    }).eq('id', user.id);
-
+    _exigirSesion('unirte a una cuadrilla');
+    final grupo = await _rpc('unirse_a_grupo', {'p_codigo': codigo.trim()});
     await loadProfile();
-    return grupo;
+    return Map<String, dynamic>.from(grupo as Map);
   }
 
   /// Salir del grupo actual (como empleado)
   static Future<void> salirDeGrupo() async {
-    final user = currentUser;
-    if (user == null) return;
-
-    await client.from('perfiles').update({
-      'grupo_id': null,
-      'rol': 'empleado',
-    }).eq('id', user.id);
-
+    _exigirSesion('salir de la cuadrilla');
+    await _rpc('salir_de_grupo');
     await loadProfile();
   }
 
-  /// Transfiere el liderazgo de una cuadrilla a otro integrante y retira al líder actual de dicha cuadrilla
+  /// Transfiere el liderazgo a otro integrante y retira al líder actual
   static Future<void> transferirLiderazgoYSalir(
       String grupoId, String nuevoLiderId) async {
-    final user = currentUser;
-    if (user == null) return;
-
-    // 1. Asignar nuevo líder en la tabla grupos
-    await client.from('grupos').update({
-      'lider_id': nuevoLiderId,
-    }).eq('id', grupoId);
-
-    // 2. Ascender al nuevo líder en perfiles
-    await client.from('perfiles').update({
-      'rol': 'lider',
-    }).eq('id', nuevoLiderId);
-
-    // 3. Revisar si el usuario actual aún lidera otras cuadrillas
-    final otrosGrupos = await client
-        .from('grupos')
-        .select('id')
-        .eq('lider_id', user.id)
-        .neq('id', grupoId);
-
-    if (otrosGrupos.isNotEmpty) {
-      await client.from('perfiles').update({
-        'grupo_id': otrosGrupos.first['id'],
-        'rol': 'lider',
-      }).eq('id', user.id);
-    } else {
-      await client.from('perfiles').update({
-        'grupo_id': null,
-        'rol': 'empleado',
-      }).eq('id', user.id);
-    }
-
+    _exigirSesion('transferir el liderazgo');
+    await _rpc('transferir_liderazgo', {
+      'p_grupo_id': grupoId,
+      'p_nuevo_lider': nuevoLiderId,
+    });
     await loadProfile();
   }
 
-  /// Disuelve una cuadrilla por completo: desvincula miembros y elimina el grupo
+  /// Disuelve una cuadrilla: desvincula miembros y elimina el grupo
   static Future<void> disolverCuadrilla(String grupoId) async {
-    final user = currentUser;
-    if (user == null) return;
-
-    // 1. Desvincular miembros
-    try {
-      await client.from('perfiles').update({
-        'grupo_id': null,
-        'rol': 'empleado',
-      }).eq('grupo_id', grupoId);
-    } catch (_) {}
-
-    // 2. Eliminar el grupo
-    await client.from('grupos').delete().eq('id', grupoId);
-
-    // 3. Revisar si el usuario lidera otras cuadrillas
-    final otrosGrupos = await client
-        .from('grupos')
-        .select('id')
-        .eq('lider_id', user.id);
-
-    if (otrosGrupos.isNotEmpty) {
-      await client.from('perfiles').update({
-        'grupo_id': otrosGrupos.first['id'],
-        'rol': 'lider',
-      }).eq('id', user.id);
-    } else {
-      await client.from('perfiles').update({
-        'grupo_id': null,
-        'rol': 'empleado',
-      }).eq('id', user.id);
-    }
-
+    _exigirSesion('disolver la cuadrilla');
+    await _rpc('disolver_cuadrilla', {'p_grupo_id': grupoId});
     await loadProfile();
   }
 
-  /// Obtiene los datos del grupo del usuario actual
+  /// Expulsa a un miembro del grupo (solo el líder)
+  static Future<void> removerMiembro(String usuarioId) async {
+    _exigirSesion('remover integrantes');
+    await _rpc('remover_miembro', {'p_usuario_id': usuarioId});
+  }
+
+  /// Cambia el grupo activo del líder
+  static Future<void> seleccionarGrupoActivo(String grupoId) async {
+    _exigirSesion('cambiar de cuadrilla');
+    await _rpc('cambiar_grupo_activo', {'p_grupo_id': grupoId});
+    await loadProfile();
+  }
+
+  /// Obtiene los datos del grupo activo del usuario (o null si no tiene)
   static Future<Map<String, dynamic>?> getMiGrupo() async {
     final grupoId = currentGrupoId;
     if (grupoId == null) return null;
@@ -395,7 +305,6 @@ class SupabaseService {
           await client.from('grupos').select().eq('id', grupoId).maybeSingle();
 
       if (grupo != null) {
-        // Obtener nombre del líder
         final lider = await client
             .from('perfiles')
             .select('nombre_completo')
@@ -403,10 +312,9 @@ class SupabaseService {
             .maybeSingle();
         grupo['lider_nombre'] = lider?['nombre_completo'] ?? 'Líder';
       }
-
       return grupo;
-    } catch (_) {
-      return null;
+    } catch (e) {
+      throw _mensajeError(e);
     }
   }
 
@@ -420,27 +328,13 @@ class SupabaseService {
           .eq('grupo_id', grupoId)
           .order('rol', ascending: false)
           .order('nombre_completo', ascending: true);
-
       return List<Map<String, dynamic>>.from(data);
-    } catch (_) {
-      return [];
+    } catch (e) {
+      throw _mensajeError(e);
     }
   }
 
-  /// Expulsa a un miembro del grupo (Solo para el Líder)
-  static Future<bool> removerMiembro(String usuarioId) async {
-    try {
-      await client.from('perfiles').update({
-        'grupo_id': null,
-        'rol': 'empleado',
-      }).eq('id', usuarioId);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Obtiene la lista de todos los grupos creados por el líder actual
+  /// Obtiene todos los grupos que lidera el usuario actual
   static Future<List<Map<String, dynamic>>> getMisGruposComoLider() async {
     final user = currentUser;
     if (user == null) return [];
@@ -450,64 +344,51 @@ class SupabaseService {
           .from('grupos')
           .select()
           .eq('lider_id', user.id)
-          .order('creado_en', ascending: false);
+          .order('created_at', ascending: false);
 
       final grupos = List<Map<String, dynamic>>.from(res);
       for (final g in grupos) {
         g['lider_nombre'] = currentNombre;
       }
       return grupos;
-    } catch (_) {
-      return [];
+    } catch (e) {
+      throw _mensajeError(e);
     }
-  }
-
-  /// Cambia el grupo activo del líder
-  static Future<void> seleccionarGrupoActivo(String grupoId) async {
-    final user = currentUser;
-    if (user == null) return;
-
-    await client.from('perfiles').update({
-      'grupo_id': grupoId,
-      'rol': 'lider',
-    }).eq('id', user.id);
-
-    await loadProfile();
   }
 
   // ========================================================================
   // HISTORIAL, STORAGE Y TRATAMIENTO
   // ========================================================================
 
-  /// Sube la imagen del escaneo al bucket 'escaneos'
-  static Future<String?> uploadScanImage(File file) async {
-    try {
-      final user = currentUser;
-      if (user == null) return null;
+  /// Sube la imagen del escaneo a `escaneos/{user_id}/` y devuelve su URL
+  /// pública. Lanza un mensaje de error si no se pudo subir.
+  static Future<String> uploadScanImage(File file) async {
+    final user = currentUser;
+    if (user == null) throw 'Debes iniciar sesión para guardar la imagen.';
 
+    try {
       final bytes = await file.readAsBytes();
       final fileExt = file.path.split('.').last.toLowerCase();
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_leaf.$fileExt';
       final filePath = '${user.id}/$fileName';
 
-      await client.storage.from('escaneos').uploadBinary(
+      await client.storage.from(_bucketEscaneos).uploadBinary(
             filePath,
             bytes,
             fileOptions: FileOptions(
               contentType: fileExt == 'png' ? 'image/png' : 'image/jpeg',
-              upsert: true,
             ),
           );
 
-      return client.storage.from('escaneos').getPublicUrl(filePath);
-    } catch (_) {
-      return null;
+      return client.storage.from(_bucketEscaneos).getPublicUrl(filePath);
+    } catch (e) {
+      throw 'No se pudo subir la imagen: ${_mensajeError(e)}';
     }
   }
 
   /// Guarda el diagnóstico con soporte para grupo, GPS y estado de tratamiento
-  static Future<bool> saveDiagnosisRecord({
-    required String? imageUrl,
+  static Future<void> saveDiagnosisRecord({
+    required String imageUrl,
     required String estadoGeneral,
     required String? diagnosticoPrincipal,
     required double? confianzaMaxima,
@@ -519,14 +400,14 @@ class SupabaseService {
     double? longitud,
     String origenFoto = 'camara',
   }) async {
-    try {
-      final user = currentUser;
-      if (user == null) return false;
+    final user = currentUser;
+    if (user == null) throw 'Debes iniciar sesión para guardar diagnósticos.';
 
+    try {
       await client.from('historial_escaneos').insert({
         'user_id': user.id,
         'grupo_id': grupoId,
-        'image_url': imageUrl ?? '',
+        'image_url': imageUrl,
         'estado_general': estadoGeneral,
         'diagnostico_principal': diagnosticoPrincipal,
         'confianza_maxima': confianzaMaxima,
@@ -538,9 +419,8 @@ class SupabaseService {
         'origen_foto': origenFoto,
         'estado_tratamiento': 'pendiente',
       });
-      return true;
-    } catch (_) {
-      return false;
+    } catch (e) {
+      throw 'No se pudo guardar el diagnóstico: ${_mensajeError(e)}';
     }
   }
 
@@ -556,18 +436,15 @@ class SupabaseService {
 
       final list = List<Map<String, dynamic>>.from(response);
 
-      // Cargar nombres de miembros del grupo para enriquecer
+      // Enriquecer con el nombre de cada autor
       final miembros = await getMiembrosGrupo(grupoId);
-      final nombresMap = {for (var m in miembros) m['id']: m['nombre_completo']};
-
-      for (var item in list) {
-        final uid = item['user_id'];
-        item['usuario_nombre'] = nombresMap[uid] ?? 'Compañero';
+      final nombres = {for (final m in miembros) m['id']: m['nombre_completo']};
+      for (final item in list) {
+        item['usuario_nombre'] = nombres[item['user_id']] ?? 'Compañero';
       }
-
       return list;
-    } catch (_) {
-      return [];
+    } catch (e) {
+      throw _mensajeError(e);
     }
   }
 
@@ -582,55 +459,126 @@ class SupabaseService {
           .select()
           .eq('user_id', user.id)
           .order('created_at', ascending: false);
-
       return List<Map<String, dynamic>>.from(response);
-    } catch (_) {
-      return [];
+    } catch (e) {
+      throw _mensajeError(e);
     }
   }
 
-  /// Actualiza el estado de tratamiento de una hoja enferma ('tratado' o 'descartado')
-  static Future<bool> actualizarEstadoTratamiento({
+  /// Indica si el usuario actual puede cambiar el tratamiento de un escaneo:
+  /// el líder de la cuadrilla del escaneo, o el autor si es un escaneo personal.
+  static bool puedeGestionarTratamiento(Map<String, dynamic> escaneo) {
+    final uid = currentUser?.id;
+    if (uid == null) return false;
+    final grupoEscaneo = escaneo['grupo_id'];
+    if (grupoEscaneo == null) return escaneo['user_id'] == uid;
+    return currentRol == 'lider' && grupoEscaneo.toString() == currentGrupoId;
+  }
+
+  /// Actualiza el estado de tratamiento ('tratado' | 'descartado' | 'pendiente')
+  static Future<void> actualizarEstadoTratamiento({
     required String scanId,
-    required String nuevoEstado, // 'tratado' | 'descartado' | 'pendiente'
+    required String nuevoEstado,
     String? notas,
   }) async {
-    final user = currentUser;
-    if (user == null) return false;
+    _exigirSesion('actualizar el tratamiento');
+    await _rpc('actualizar_tratamiento', {
+      'p_scan_id': scanId,
+      'p_estado': nuevoEstado,
+      'p_notas': notas,
+    });
+  }
 
+  /// Elimina un registro propio del historial y su imagen en Storage
+  static Future<void> deleteHistoryRecord(Map<String, dynamic> registro) async {
+    final id = registro['id'].toString();
     try {
-      await client.from('historial_escaneos').update({
-        'estado_tratamiento': nuevoEstado,
-        'tratado_por': user.id,
-        'fecha_tratamiento': DateTime.now().toIso8601String(),
-        'notas_tratamiento': notas,
-      }).eq('id', scanId);
-      return true;
-    } catch (_) {
-      return false;
+      final borrados = await client
+          .from('historial_escaneos')
+          .delete()
+          .eq('id', id)
+          .select('id');
+      if (borrados.isEmpty) {
+        throw 'No tienes permiso para eliminar este registro.';
+      }
+    } on String {
+      rethrow;
+    } catch (e) {
+      throw _mensajeError(e);
+    }
+
+    // La imagen se borra después; si falla, el registro ya no existe y no
+    // conviene mostrar error al usuario.
+    final ruta = _rutaEnBucket(registro['image_url']?.toString());
+    if (ruta != null) {
+      try {
+        await client.storage.from(_bucketEscaneos).remove([ruta]);
+      } catch (_) {}
     }
   }
 
-  /// Elimina un registro del historial
-  static Future<bool> deleteHistoryRecord(String recordId) async {
+  // ========================================================================
+  // UTILIDADES
+  // ========================================================================
+
+  static void _exigirSesion(String accion) {
+    if (currentUser == null) throw 'Debes iniciar sesión para $accion.';
+  }
+
+  static Future<dynamic> _rpc(String funcion,
+      [Map<String, dynamic>? params]) async {
     try {
-      await client.from('historial_escaneos').delete().eq('id', recordId);
-      return true;
-    } catch (_) {
-      return false;
+      return await client.rpc(funcion, params: params);
+    } catch (e) {
+      throw _mensajeError(e);
     }
   }
 
-  /// Traduce los mensajes comunes de Supabase a mensajes amigables en español
+  /// Extrae `{user_id}/{archivo}` de una URL pública del bucket
+  static String? _rutaEnBucket(String? url) {
+    if (url == null || url.isEmpty) return null;
+    const marcador = '/$_bucketEscaneos/';
+    final i = url.indexOf(marcador);
+    if (i < 0) return null;
+    return Uri.decodeComponent(url.substring(i + marcador.length));
+  }
+
+  static bool _esUsuarioYaRegistrado(String mensaje) {
+    final lower = mensaje.toLowerCase();
+    return lower.contains('already registered') ||
+        lower.contains('user_already_exists') ||
+        lower.contains('already been registered');
+  }
+
+  /// Convierte cualquier error en un mensaje entendible
+  static String _mensajeError(Object e) {
+    if (e is String) return e;
+    if (e is AuthException) return _traducirErrorAuth(e.message);
+    if (e is PostgrestException) {
+      // Los mensajes de las funciones RPC ya vienen en español
+      if (e.code == '42501' || e.message.contains('permission denied')) {
+        return 'No tienes permiso para realizar esta acción.';
+      }
+      if (e.code == 'PGRST202') {
+        return 'Falta actualizar la base de datos (función no encontrada).';
+      }
+      return e.message;
+    }
+    if (e is StorageException) return e.message;
+    if (e is SocketException) {
+      return 'Sin conexión a internet. Verifica tu señal e inténtalo de nuevo.';
+    }
+    return 'Error de conexión. Verifica tu internet e inténtalo de nuevo.';
+  }
+
+  /// Traduce los mensajes comunes de Supabase Auth al español
   static String _traducirErrorAuth(String mensajeOriginal) {
     final lower = mensajeOriginal.toLowerCase();
     if (lower.contains('invalid login credentials') ||
         lower.contains('invalid credentials')) {
       return 'DNI o PIN incorrecto.';
     }
-    if (lower.contains('user already registered') ||
-        lower.contains('already registered') ||
-        lower.contains('user_already_exists')) {
+    if (_esUsuarioYaRegistrado(mensajeOriginal)) {
       return 'Este DNI ya está registrado en el sistema.';
     }
     if (lower.contains('password should be at least')) {
@@ -638,6 +586,9 @@ class SupabaseService {
     }
     if (lower.contains('rate limit')) {
       return 'Demasiados intentos. Espera unos momentos antes de reintentar.';
+    }
+    if (lower.contains('email not confirmed')) {
+      return 'La cuenta no está confirmada. Contacta al administrador.';
     }
     return mensajeOriginal;
   }

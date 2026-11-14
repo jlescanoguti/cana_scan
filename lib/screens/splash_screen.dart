@@ -9,8 +9,15 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
-  double _progress = 0.0;
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  /// Duración mínima de la pantalla de bienvenida
+  static const _duracionMinima = Duration(milliseconds: 1200);
+
+  late final AnimationController _progreso = AnimationController(
+    vsync: this,
+    duration: _duracionMinima,
+  )..forward();
 
   @override
   void initState() {
@@ -18,25 +25,32 @@ class _SplashScreenState extends State<SplashScreen> {
     _startLoading();
   }
 
-  void _startLoading() async {
-    for (int i = 0; i <= 100; i++) {
-      await Future.delayed(const Duration(milliseconds: 25));
-      if (mounted) {
-        setState(() {
-          _progress = i / 100;
-        });
-      }
-    }
+  @override
+  void dispose() {
+    _progreso.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startLoading() async {
+    // El perfil se carga mientras corre la animación
+    await Future.wait([
+      Future.delayed(_duracionMinima),
+      _cargarPerfil(),
+    ]);
     if (mounted) {
-      if (SupabaseService.isAuthenticated) {
-        await SupabaseService.loadProfile();
-      }
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
-      }
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+    }
+  }
+
+  Future<void> _cargarPerfil() async {
+    if (!SupabaseService.isAuthenticated) return;
+    try {
+      await SupabaseService.loadProfile();
+    } catch (_) {
+      // Sin conexión: Home volverá a intentarlo
     }
   }
 
@@ -93,11 +107,14 @@ class _SplashScreenState extends State<SplashScreen> {
               height: 5,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: _progress,
-                  backgroundColor: Colors.white.withValues(alpha: 0.15),
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                    Color(0xFF66BB6A),
+                child: AnimatedBuilder(
+                  animation: _progreso,
+                  builder: (context, _) => LinearProgressIndicator(
+                    value: _progreso.value,
+                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Color(0xFF66BB6A),
+                    ),
                   ),
                 ),
               ),
