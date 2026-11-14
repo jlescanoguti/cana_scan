@@ -142,6 +142,37 @@ class AppInfoSheet extends StatelessWidget {
 
                   const SizedBox(height: 20),
 
+                  // Sección: Uso eficiente (software verde)
+                  const Text(
+                    'Uso eficiente de la app',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1B3A1B),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  _buildTipItem(
+                    icon: Icons.eco_rounded,
+                    titulo: 'Una buena foto basta',
+                    descripcion: 'Cada análisis usa datos móviles, batería y energía del servidor. '
+                        'Sigue las recomendaciones anteriores para no tener que repetir la foto.',
+                  ),
+                  _buildTipItem(
+                    icon: Icons.location_on_outlined,
+                    titulo: 'GPS solo cuando hace falta',
+                    descripcion: 'La ubicación se pide únicamente al detectar una afección, y solo por unos segundos. '
+                        'Puedes mantener el GPS apagado el resto del tiempo.',
+                  ),
+                  _buildTipItem(
+                    icon: Icons.delete_outline_rounded,
+                    titulo: 'Borra lo que no necesites',
+                    descripcion: 'Eliminar diagnósticos de prueba también borra su foto del servidor y libera espacio.',
+                  ),
+
+                  const SizedBox(height: 20),
+
                   // Sección: Afecciones detectadas
                   const Text(
                     'Afecciones y estados detectables',

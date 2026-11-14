@@ -49,9 +49,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: source,
+      // Los modelos se entrenaron a 640 px y la API reduce toda foto a ese
+      // tamaño: 1024 px conserva la misma información para el modelo y
+      // reduce los datos enviados y el espacio en Storage. La calidad se
+      // mantiene en 85 para no añadir artefactos JPEG que afecten lesiones
+      // sutiles.
       imageQuality: 85,
-      maxWidth: 1200,
-      maxHeight: 1200,
+      maxWidth: 1024,
+      maxHeight: 1024,
     );
 
     if (picked != null && context.mounted) {
@@ -177,8 +182,9 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _indiceTab,
         onDestinationSelected: (idx) {
           setState(() => _indiceTab = idx);
-          // También al volver a Escanear, por si cambió la cuadrilla
-          if (SupabaseService.isAuthenticated) {
+          // El chip de cuadrilla solo se ve en Escanear; Historial y
+          // Cuadrilla cargan sus propios datos, así evitamos consultas dobles
+          if (idx == 0 && SupabaseService.isAuthenticated) {
             _cargarDatosUsuario();
           }
         },

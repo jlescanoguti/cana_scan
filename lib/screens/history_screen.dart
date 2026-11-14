@@ -15,6 +15,8 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen>
     with SingleTickerProviderStateMixin {
   bool _cargando = true;
+  bool _cargandoMas = false;
+  int _limite = SupabaseService.tamanoPaginaHistorial;
   List<Map<String, dynamic>> _historialGrupal = [];
   List<Map<String, dynamic>> _historialPersonal = [];
   String? _error;
@@ -41,27 +43,12 @@ class _HistoryScreenState extends State<HistoryScreen>
     setState(() {
       _cargando = true;
       _error = null;
+      _limite = SupabaseService.tamanoPaginaHistorial;
     });
 
     try {
-      // Ambas consultas son independientes: se hacen a la vez
-      final grupoId = SupabaseService.currentGrupoId;
-      final resultados = await Future.wait([
-        grupoId != null
-            ? SupabaseService.getGroupHistory(grupoId)
-            : Future.value(<Map<String, dynamic>>[]),
-        SupabaseService.getPersonalHistory(),
-      ]);
-      final grupal = resultados[0];
-      final personal = resultados[1];
-
-      if (mounted) {
-        setState(() {
-          _historialGrupal = grupal;
-          _historialPersonal = personal;
-          _cargando = false;
-        });
-      }
+      await _descargar();
+      if (mounted) setState(() => _cargando = false);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -69,6 +56,38 @@ class _HistoryScreenState extends State<HistoryScreen>
           _cargando = false;
         });
       }
+    }
+  }
+
+  /// Descarga la siguiente página sin ocultar la lista actual
+  Future<void> _cargarMas() async {
+    setState(() {
+      _cargandoMas = true;
+      _limite += SupabaseService.tamanoPaginaHistorial;
+    });
+    try {
+      await _descargar();
+    } catch (e) {
+      _mostrarError(e);
+    } finally {
+      if (mounted) setState(() => _cargandoMas = false);
+    }
+  }
+
+  /// Descarga los historiales grupal y personal (a la vez) hasta [_limite]
+  Future<void> _descargar() async {
+    final grupoId = SupabaseService.currentGrupoId;
+    final resultados = await Future.wait([
+      grupoId != null
+          ? SupabaseService.getGroupHistory(grupoId, limite: _limite)
+          : Future.value(<Map<String, dynamic>>[]),
+      SupabaseService.getPersonalHistory(limite: _limite),
+    ]);
+    if (mounted) {
+      setState(() {
+        _historialGrupal = resultados[0];
+        _historialPersonal = resultados[1];
+      });
     }
   }
 
@@ -339,14 +358,32 @@ class _HistoryScreenState extends State<HistoryScreen>
       );
     }
 
+    // Si la página vino llena puede haber más registros en el servidor
+    final hayMas = items.length >= _limite;
+
     return RefreshIndicator(
       color: const Color(0xFF2D7A2D),
       onRefresh: _cargarHistorial,
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-        itemCount: items.length,
+        itemCount: items.length + (hayMas ? 1 : 0),
         separatorBuilder: (context, index) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
+          if (index == items.length) {
+            return Center(
+              child: _cargandoMas
+                  ? const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF2D7A2D)),
+                    )
+                  : TextButton.icon(
+                      onPressed: _cargarMas,
+                      icon: const Icon(Icons.expand_more_rounded),
+                      label: const Text('Cargar más diagnósticos'),
+                    ),
+            );
+          }
           final item = items[index];
           final diag = item['diagnostico_principal'] ?? 'No reconocido';
           final estado = item['estado_general'] ?? 'no_reconocido';
@@ -395,6 +432,9 @@ class _HistoryScreenState extends State<HistoryScreen>
                                   imageUrl,
                                   width: 60,
                                   height: 60,
+                                  // Decodificar en tamaño miniatura ahorra
+                                  // memoria y CPU frente a la foto completa
+                                  cacheWidth: 180,
                                   fit: BoxFit.cover,
                                   errorBuilder:
                                       (context, error, stackTrace) => Container(

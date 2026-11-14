@@ -258,6 +258,7 @@ class _MapScreenState extends State<MapScreen> {
                     imageUrl,
                     width: 52,
                     height: 52,
+                    cacheWidth: 156,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => Container(
                       width: 52,

@@ -450,20 +450,31 @@ class SupabaseService {
     }
   }
 
-  /// Obtiene los escaneos del grupo (historial compartido)
-  static Future<List<Map<String, dynamic>>> getGroupHistory(
-      String grupoId) async {
-    try {
-      final response = await client
-          .from('historial_escaneos')
-          .select()
-          .eq('grupo_id', grupoId)
-          .order('created_at', ascending: false);
+  /// Cantidad de escaneos que se descargan por página en el historial
+  static const int tamanoPaginaHistorial = 30;
 
-      final list = List<Map<String, dynamic>>.from(response);
+  /// Obtiene los escaneos más recientes del grupo (historial compartido).
+  /// Se pagina con [limite] para no descargar todo el historial de una vez.
+  static Future<List<Map<String, dynamic>>> getGroupHistory(
+    String grupoId, {
+    int limite = tamanoPaginaHistorial,
+  }) async {
+    try {
+      // Escaneos y nombres de integrantes son independientes: en paralelo
+      final resultados = await Future.wait([
+        client
+            .from('historial_escaneos')
+            .select()
+            .eq('grupo_id', grupoId)
+            .order('created_at', ascending: false)
+            .limit(limite),
+        getMiembrosGrupo(grupoId),
+      ]);
+
+      final list = List<Map<String, dynamic>>.from(resultados[0]);
 
       // Enriquecer con el nombre de cada autor
-      final miembros = await getMiembrosGrupo(grupoId);
+      final miembros = resultados[1];
       final nombres = {for (final m in miembros) m['id']: m['nombre_completo']};
       for (final item in list) {
         item['usuario_nombre'] = nombres[item['user_id']] ?? 'Compañero';
@@ -474,8 +485,10 @@ class SupabaseService {
     }
   }
 
-  /// Obtiene los escaneos personales del usuario autenticado
-  static Future<List<Map<String, dynamic>>> getPersonalHistory() async {
+  /// Obtiene los escaneos personales más recientes del usuario (paginados)
+  static Future<List<Map<String, dynamic>>> getPersonalHistory({
+    int limite = tamanoPaginaHistorial,
+  }) async {
     final user = currentUser;
     if (user == null) return [];
 
@@ -484,7 +497,8 @@ class SupabaseService {
           .from('historial_escaneos')
           .select()
           .eq('user_id', user.id)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .limit(limite);
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       throw _mensajeError(e);
