@@ -70,6 +70,15 @@ class LocationService {
     }
   }
 
+  /// Indica si el GPS del teléfono está encendido
+  static Future<bool> gpsActivado() async {
+    try {
+      return await Geolocator.isLocationServiceEnabled();
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Abre la configuración del sistema para activar el GPS
   static Future<bool> openLocationSettings() async {
     try {

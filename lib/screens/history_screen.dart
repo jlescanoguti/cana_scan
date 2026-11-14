@@ -44,12 +44,16 @@ class _HistoryScreenState extends State<HistoryScreen>
     });
 
     try {
+      // Ambas consultas son independientes: se hacen a la vez
       final grupoId = SupabaseService.currentGrupoId;
-      List<Map<String, dynamic>> grupal = [];
-      if (grupoId != null) {
-        grupal = await SupabaseService.getGroupHistory(grupoId);
-      }
-      final personal = await SupabaseService.getPersonalHistory();
+      final resultados = await Future.wait([
+        grupoId != null
+            ? SupabaseService.getGroupHistory(grupoId)
+            : Future.value(<Map<String, dynamic>>[]),
+        SupabaseService.getPersonalHistory(),
+      ]);
+      final grupal = resultados[0];
+      final personal = resultados[1];
 
       if (mounted) {
         setState(() {

@@ -87,6 +87,32 @@ class SupabaseService {
     required String preguntaAuxilio,
     required String respuestaAuxilio,
   }) async {
+    try {
+      await _registrar(
+        dni: dni,
+        nombreCompleto: nombreCompleto,
+        pin: pin,
+        preguntaAuxilio: preguntaAuxilio,
+        respuestaAuxilio: respuestaAuxilio,
+      );
+    } catch (_) {
+      // Si el registro falla a medias, no dejar una sesión sin perfil
+      if (currentUser != null) {
+        try {
+          await signOut();
+        } catch (_) {}
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> _registrar({
+    required String dni,
+    required String nombreCompleto,
+    required String pin,
+    required String preguntaAuxilio,
+    required String respuestaAuxilio,
+  }) async {
     final cleanDni = dni.trim();
     final email = dniToEmail(cleanDni);
     final password = pinToPassword(pin);
@@ -499,7 +525,15 @@ class SupabaseService {
           .eq('id', id)
           .select('id');
       if (borrados.isEmpty) {
-        throw 'No tienes permiso para eliminar este registro.';
+        // 0 filas: o ya estaba borrado (no es un error) o no es del usuario
+        final sigueExistiendo = await client
+            .from('historial_escaneos')
+            .select('id')
+            .eq('id', id)
+            .maybeSingle();
+        if (sigueExistiendo != null) {
+          throw 'No tienes permiso para eliminar este registro.';
+        }
       }
     } on String {
       rethrow;

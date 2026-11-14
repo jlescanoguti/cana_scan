@@ -177,7 +177,8 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _indiceTab,
         onDestinationSelected: (idx) {
           setState(() => _indiceTab = idx);
-          if (idx != 0 && SupabaseService.isAuthenticated) {
+          // También al volver a Escanear, por si cambió la cuadrilla
+          if (SupabaseService.isAuthenticated) {
             _cargarDatosUsuario();
           }
         },

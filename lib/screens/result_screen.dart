@@ -43,6 +43,9 @@ class _ResultScreenState extends State<ResultScreen> {
 
   static const double _umbralConfiable = 0.40;
 
+  /// No se guarda mientras se busca el GPS, para no perder la ubicación
+  bool get _bloquearGuardado => _guardando || _obteniendoGps;
+
   final Map<String, Color> _coloresClase = {
     'Amarillamiento Inicial': const Color(0xFFFFD54F),
     'Amarillamiento Avanzado': const Color(0xFFFFA000),
@@ -68,35 +71,8 @@ class _ResultScreenState extends State<ResultScreen> {
     'CogolleroAvanzado': const Color(0xFF3E2723),
   };
 
-  Color _colorPorClase(String clase) {
-    final claveNormalizada = clase.trim();
-    if (_coloresClase.containsKey(claveNormalizada)) {
-      return _coloresClase[claveNormalizada]!;
-    }
-
-    final claveSinEspacios = claveNormalizada.replaceAll(RegExp(r'\s+'), '');
-    final claveLower = claveSinEspacios.toLowerCase();
-
-    if (claveLower.contains('amarillamiento')) {
-      return const Color(0xFFFFD600);
-    }
-    if (claveLower.contains('cogollero') ||
-        claveLower.contains('cogollo') ||
-        claveLower.contains('gusano')) {
-      return Colors.black;
-    }
-    if (claveLower.contains('podredumbre') || claveLower.contains('roja')) {
-      return Colors.red;
-    }
-    if (claveLower.contains('roya')) {
-      return Colors.blue;
-    }
-    if (claveLower.contains('saludable')) {
-      return Colors.green;
-    }
-
-    return Colors.grey;
-  }
+  Color _colorPorClase(String clase) =>
+      _colorPorClaseEnPainter(clase, _coloresClase);
 
   @override
   void initState() {
@@ -627,7 +603,16 @@ class _ResultScreenState extends State<ResultScreen> {
                       );
                       // Al volver con sesión iniciada se muestran las
                       // opciones de guardado
-                      if (mounted) setState(() {});
+                      if (!mounted) return;
+                      setState(() {});
+                      final hayAfeccionConfiable = _deteccionesConfiables()
+                          .any((d) => d['clase'] != 'Saludable');
+                      if (SupabaseService.isAuthenticated &&
+                          SupabaseService.currentGrupoId != null &&
+                          hayAfeccionConfiable &&
+                          _latitud == null) {
+                        _obtenerUbicacionGps();
+                      }
                     },
                     icon: const Icon(Icons.login_rounded, size: 16),
                     label: const Text('Acceder con mi DNI'),
@@ -682,7 +667,9 @@ class _ResultScreenState extends State<ResultScreen> {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: _guardando ? null : () => _guardarEnHistorial(esGrupal: true),
+                  onPressed: _bloquearGuardado
+                      ? null
+                      : () => _guardarEnHistorial(esGrupal: true),
                   icon: _guardando
                       ? const SizedBox(
                           width: 18,
@@ -708,7 +695,8 @@ class _ResultScreenState extends State<ResultScreen> {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: _guardando ? null : _confirmarGuardarSoloPersonal,
+                  onPressed:
+                      _bloquearGuardado ? null : _confirmarGuardarSoloPersonal,
                   icon: const Icon(Icons.bookmark_border_rounded, size: 18),
                   label: const Text('Guardar solo en mi historial personal'),
                 ),
@@ -724,7 +712,9 @@ class _ResultScreenState extends State<ResultScreen> {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: _guardando ? null : () => _guardarEnHistorial(esGrupal: false),
+                  onPressed: _bloquearGuardado
+                      ? null
+                      : () => _guardarEnHistorial(esGrupal: false),
                   icon: const Icon(Icons.save_rounded, size: 18),
                   label: const Text(
                     'Guardar en mi historial personal',
@@ -951,11 +941,14 @@ class _ResultScreenState extends State<ResultScreen> {
                   borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () async {
-              await LocationService.openLocationSettings();
+              // Solo abrir los ajustes si el GPS del teléfono está apagado
+              if (!await LocationService.gpsActivado()) {
+                await LocationService.openLocationSettings();
+              }
               await _obtenerUbicacionGps();
             },
             icon: const Icon(Icons.gps_fixed_rounded, size: 16),
-            label: const Text('Activar GPS y Reintentar',
+            label: const Text('Reintentar GPS',
                 style: TextStyle(fontSize: 12)),
           ),
         ],

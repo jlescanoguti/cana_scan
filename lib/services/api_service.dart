@@ -29,6 +29,8 @@ class ApiService {
       throw 'El servidor tardó demasiado en responder. Inténtalo de nuevo.';
     } on http.ClientException {
       throw 'No se pudo conectar con el servidor de diagnóstico.';
+    } on FileSystemException {
+      throw 'No se pudo leer la foto. Vuelve a tomarla o elígela de la galería.';
     }
 
     if (response.statusCode >= 500) {
