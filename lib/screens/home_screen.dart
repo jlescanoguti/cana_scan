@@ -122,7 +122,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final autenticado = SupabaseService.isAuthenticated;
     final nombre = SupabaseService.currentNombre;
-    final rol = SupabaseService.currentRol;
     final nombreGrupo = _miGrupo?['nombre'];
 
     Widget cuerpo;
@@ -152,7 +151,6 @@ class _HomeScreenState extends State<HomeScreen> {
         cuerpo = _buildVistaEscanear(
           autenticado: autenticado,
           nombre: nombre,
-          rol: rol,
           nombreGrupo: nombreGrupo,
         );
         break;
@@ -218,7 +216,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildVistaEscanear({
     required bool autenticado,
     required String nombre,
-    required String rol,
     required String? nombreGrupo,
   }) {
     return SafeArea(
@@ -299,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
                 ] else ...[
-                  // Chip compacto con usuario y rol + botón salir discreto
+                  // Chip compacto con usuario + botón salir discreto
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 4),
@@ -326,29 +323,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(width: 6),
                         ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 85),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                nombre.split(' ').first,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1B3A1B),
-                                ),
-                              ),
-                              Text(
-                                rol == 'lider' ? 'Líder' : 'Empleado',
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF2D7A2D),
-                                ),
-                              ),
-                            ],
+                          constraints: const BoxConstraints(maxWidth: 90),
+                          child: Text(
+                            nombre.split(' ').first,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1B3A1B),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -371,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 16),
 
-            // Chip de estado / cuadrilla activa
+            // Chip de estado / cuadrilla
             if (autenticado && nombreGrupo != null) ...[
               Container(
                 padding:
@@ -384,12 +367,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.hub_rounded,
+                    const Icon(Icons.groups_rounded,
                         size: 16, color: Color(0xFF2D7A2D)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Cuadrilla activa: $nombreGrupo',
+                        'Cuadrilla: $nombreGrupo',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,

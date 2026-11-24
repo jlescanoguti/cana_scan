@@ -270,6 +270,9 @@ class SupabaseService {
   /// Crea un nuevo grupo de trabajo (el creador pasa a ser 'lider')
   static Future<Map<String, dynamic>> crearGrupo(String nombreGrupo) async {
     _exigirSesion('crear una cuadrilla');
+    if (currentGrupoId != null) {
+      throw 'Ya perteneces a una cuadrilla. Debes salir o disolver tu cuadrilla actual antes de crear una nueva.';
+    }
     final grupo = await _rpc('crear_grupo', {'p_nombre': nombreGrupo.trim()});
     await loadProfile();
     return Map<String, dynamic>.from(grupo as Map);
@@ -278,6 +281,9 @@ class SupabaseService {
   /// Unirse a un grupo mediante código de invitación
   static Future<Map<String, dynamic>> unirseAGrupo(String codigo) async {
     _exigirSesion('unirte a una cuadrilla');
+    if (currentGrupoId != null) {
+      throw 'Ya perteneces a una cuadrilla. Debes salir de tu cuadrilla actual antes de unirte a otra.';
+    }
     final grupo = await _rpc('unirse_a_grupo', {'p_codigo': codigo.trim()});
     await loadProfile();
     return Map<String, dynamic>.from(grupo as Map);
