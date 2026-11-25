@@ -19,6 +19,8 @@ class _GroupScreenState extends State<GroupScreen> {
   final _codigoController = TextEditingController();
   final _nombreGrupoController = TextEditingController();
   bool _procesandoAccion = false;
+  String? _errorCodigo;
+  String? _errorNombre;
 
   @override
   void initState() {
@@ -68,7 +70,10 @@ class _GroupScreenState extends State<GroupScreen> {
 
   Future<void> _unirseAGrupo() async {
     final codigo = _codigoController.text.trim();
-    if (codigo.isEmpty) return;
+    if (codigo.isEmpty) {
+      setState(() => _errorCodigo = 'Ingrese código primero');
+      return;
+    }
 
     setState(() => _procesandoAccion = true);
 
@@ -100,7 +105,10 @@ class _GroupScreenState extends State<GroupScreen> {
 
   Future<void> _crearGrupo() async {
     final nombre = _nombreGrupoController.text.trim();
-    if (nombre.isEmpty) return;
+    if (nombre.isEmpty) {
+      setState(() => _errorNombre = 'Ingrese nombre primero');
+      return;
+    }
 
     setState(() => _procesandoAccion = true);
 
@@ -677,8 +685,14 @@ class _GroupScreenState extends State<GroupScreen> {
               TextField(
                 controller: _codigoController,
                 textCapitalization: TextCapitalization.characters,
+                onChanged: (_) {
+                  if (_errorCodigo != null) {
+                    setState(() => _errorCodigo = null);
+                  }
+                },
                 decoration: InputDecoration(
                   hintText: 'ej: CANA-1234',
+                  errorText: _errorCodigo,
                   prefixIcon: const Icon(Icons.key_rounded, size: 20),
                   filled: true,
                   fillColor: const Color(0xFFF9FBF9),
@@ -735,8 +749,14 @@ class _GroupScreenState extends State<GroupScreen> {
               TextField(
                 controller: _nombreGrupoController,
                 textCapitalization: TextCapitalization.words,
+                onChanged: (_) {
+                  if (_errorNombre != null) {
+                    setState(() => _errorNombre = null);
+                  }
+                },
                 decoration: InputDecoration(
                   hintText: 'ej: Finca Santa Rosa - Lote 3',
+                  errorText: _errorNombre,
                   prefixIcon: const Icon(Icons.business_rounded, size: 20),
                   filled: true,
                   fillColor: const Color(0xFFF9FBF9),
